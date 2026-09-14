@@ -18,7 +18,7 @@ class AgentRunCommand extends Command
 {
     protected $signature = 'agent:run {--once : Run a single poll iteration and exit}';
 
-    protected $description = 'Run the remote backup agent (polls for jobs from the Databasement server)';
+    protected $description = 'Run the remote backup agent (polls for jobs from the Datacask server)';
 
     private bool $shouldStop = false;
 
@@ -36,7 +36,7 @@ class AgentRunCommand extends Command
 
         $client = new AgentApiClient($url, $token);
 
-        $this->log('Databasement Agent starting...');
+        $this->log('Datacask Agent starting...');
         $this->log("Server: {$url}");
         $this->log("Poll interval: {$pollInterval}s");
 

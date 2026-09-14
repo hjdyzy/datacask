@@ -1,141 +1,110 @@
-<p align="center">
-  <a href="https://github.com/David-Crty/databasement">
-    <img src="docs/static/img/banner-v2.png" alt="Databasement Banner" />
-  </a>
-</p>
+# Datacask
 
-<p align="center">
-  <a href="https://app.codecov.io/gh/David-Crty/databasement">
-    <img src="https://codecov.io/gh/David-Crty/databasement/graph/badge.svg" alt="Code Coverage" />
-  </a>
-  <a href="https://github.com/David-Crty/databasement/actions">
-    <img src="https://github.com/David-Crty/databasement/actions/workflows/tests.yml/badge.svg" alt="CI Status" />
-  </a>
-  <a href="https://artifacthub.io/packages/helm/databasement/databasement">
-    <img src="https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/databasement" alt="Artifact Hub" />
-  </a>
-  <a href="https://hub.docker.com/r/davidcrty/databasement">
-    <img src="https://img.shields.io/docker/pulls/davidcrty/databasement" alt="Docker Pulls" />
-  </a>
-  <a href="https://snyk.io/test/github/David-Crty/databasement">
-    <img src="https://snyk.io/test/github/David-Crty/databasement/badge.svg" alt="Known Vulnerabilities" />
-  </a>
-</p>
+面向团队的自托管数据库备份与恢复平台。
 
-<p align="center">
-  A modern, self-hosted database backup management application for MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, and Redis.
-</p>
+[![Upstream](https://img.shields.io/badge/upstream-Databasement-6366f1)](https://github.com/David-Crty/databasement)
+[![Repository](https://img.shields.io/badge/repository-hjdyzy%2Fdatacask-0f766e)](https://github.com/hjdyzy/datacask)
+[![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
 
-<p align="center">
-  <a href="https://databasement-demo.crty.dev/"><strong>Live Demo</strong></a> ·
-  <a href="https://david-crty.github.io/databasement/">Documentation</a> ·
-  <a href="https://david-crty.github.io/databasement/llms.txt">llms.txt</a> ·
-  <a href="https://github.com/David-Crty/databasement/issues">Report Bug or Request Feature</a>
-</p>
+## 项目介绍
 
----
+Datacask 基于开源项目 [Databasement](https://github.com/David-Crty/databasement)
+进行二次开发，提供数据库服务器登记、自动备份、快照管理、跨实例恢复、保留策略、
+多存储后端、失败通知和团队权限控制。
 
-## Features
+当前主要使用场景是 MySQL 数据库备份。一个 MySQL 实例可以按全部数据库、指定数据库
+或名称模式进行选择，每个数据库生成独立的备份任务、快照和文件。
 
-- **Multi-database support** - Manage MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, and Redis/Valkey servers from a single interface
-- **SSH tunnel support** - Connect to databases in private networks through a bastion/jump server with password or key-based authentication
-- **Remote agents** - Back up databases in firewalled or isolated networks with no inbound port: a lightweight agent connects out over HTTPS, dumps locally, and uploads to your storage
-- **Automated backups** - Schedule recurring backups on daily or weekly intervals. Flexible retention policies: simple time-based (days) or GFS (grandfather-father-son)
-- **Multiple compression options** - gzip, zstd (20-40% better compression), or encrypted (AES-256 for sensitive data)
-- **Cross-server restore** - Restore snapshots from production to staging, or between any compatible servers
-- **Scheduled restores** - Refresh a target database on a recurring schedule (e.g. nightly prod → staging) by replaying the latest completed snapshot
-- **Built-in data browser** - Open Adminer in-app to inspect MySQL, PostgreSQL, and SQLite servers (admin-enabled, role-gated)
-- **Flexible storage** - Store backups locally, on S3-compatible storage (AWS S3, MinIO, etc.), Azure Blob Storage, Samba/SMB shares, or remote servers via SFTP/FTP
-- **Real-time monitoring** - Track backup and restore progress with detailed job logs
-- **Failure notifications** - Get alerted via Email, Slack, Discord, Telegram, Pushover, Gotify, or Webhook when jobs fail
-- **Team ready** - Multi-tenant organizations with isolated workspaces, role-based access control, OAuth/SSO login (Google, GitHub, GitLab, OpenID Connect), and optional two-factor authentication
-- **Automation** - REST API and MCP server for scripting, CI/CD, and AI assistant integration
-- **Simple deployment** - Single Docker container with built-in web server, queue worker, and scheduler
+## MySQL 能力边界
 
-> **Try it out!** Explore the [live demo](https://databasement-demo.crty.dev/) to see Databasement in action before installing.
+- 使用 `mariadb-dump` 生成逻辑全量备份。
+- 支持手动和周期备份、压缩、加密、校验、保留和跨实例恢复。
+- 支持将备份恢复到原实例或兼容的其他实例。
+- 不提供 MySQL 主从复制、GTID 管理、binlog 持续归档、增量备份或时间点恢复。
+- MySQL 高可用与持续同步应由 MySQL Replication、InnoDB Cluster 等独立方案负责。
 
-## Self-Hosting
+## 存储后端
 
-Databasement is designed to be self-hosted. We provide several deployment options:
+备份文件可以保存到：
 
-| Method                | Description                                  | Guide                                                                                |
-|-----------------------|----------------------------------------------|--------------------------------------------------------------------------------------|
-| **Docker**            | Single container deployment                  | [View Guide](https://david-crty.github.io/databasement/self-hosting/docker)          |
-| **Docker Compose**    | Multi-container setup with external database | [View Guide](https://david-crty.github.io/databasement/self-hosting/docker-compose)  |
-| **Kubernetes + Helm** | For Kubernetes clusters                      | [View Guide](https://david-crty.github.io/databasement/self-hosting/kubernetes-helm) |
-| **Native Ubuntu**     | Traditional installation without Docker      | [View Guide](https://david-crty.github.io/databasement/self-hosting/native-ubuntu)   |
+- 本地磁盘
+- S3 兼容对象存储，包括 MinIO
+- Azure Blob Storage
+- Samba/SMB
+- SFTP
+- FTP
 
-### Quick Start
+这里的 MinIO 仅作为备份文件的存储目标，不表示 Datacask 会备份 MinIO 中的对象数据。
 
-```bash
-# Run the container
-docker run -d \
-  --name databasement \
-  -p 2226:2226 \
-  -e DB_CONNECTION=sqlite \
-  -e DB_DATABASE=/data/database.sqlite \
-  -e ENABLE_QUEUE_WORKER=true \
-  -v ./databasement-data:/data \
-  davidcrty/databasement:1
+## 简体中文
+
+Datacask 默认使用简体中文，并保留英文、繁体中文、法语、西班牙语和希腊语。
+用户可以在偏好设置中切换语言。部署时也可以通过环境变量指定：
+
+```dotenv
+APP_NAME=Datacask
+APP_LOCALE=zh_CN
+APP_FALLBACK_LOCALE=en
 ```
 
-Open http://localhost:2226 and create your first admin account.
+## 技术栈
 
-> **Note:** The container automatically handles volume permissions. You can use `PUID` and `PGID` environment variables to match your system's user/group IDs.
+- PHP 8.5
+- Laravel 13
+- Livewire 4
+- Mary UI、daisyUI 和 Tailwind CSS
+- Pest 5
+- Docker Compose
 
-For production deployments, see our [configuration guide](https://david-crty.github.io/databasement/self-hosting/configuration) for environment variables and best practices.
+## 本地开发
 
-## Supported Database Versions
+项目要求所有 PHP、Composer 和 Pest 命令在 Docker 中运行。准备好 Docker 后执行：
 
-| Engine     | Supported Versions           | CLI Tool                     | Restore |
-|------------|------------------------------|------------------------------|---------|
-| MySQL      | 5.6, 5.7, 8.x, 9.x           | `mariadb-dump`               | Yes     |
-| MariaDB    | 10.x, 11.x, 12.x             | `mariadb-dump`               | Yes     |
-| PostgreSQL | 12, 13, 14, 15, 16, 17, 18   | `pg_dump` v16 / v18          | Yes     |
-| SQL Server | 2017, 2019, 2022, Azure SQL  | `sqlpackage` (`.dacpac`)     | Yes     |
-| MongoDB    | 4.2, 4.4, 5.0, 6.0, 7.0, 8.0 | `mongodump` / `mongorestore` | Yes     |
-| SQLite     | 3.x                          | `sqlite3 .backup`            | Yes     |
-| Firebird   | 3.x, 4.x, 5.x                | `gbak` v5                    | Yes     |
-| Redis      | 2.8+                         | `redis-cli --rdb`            | No      |
-| Valkey     | 7.2+                         | `redis-cli --rdb`            | No      |
+```bash
+git clone https://github.com/hjdyzy/datacask.git
+cd datacask
+make setup
+```
 
-See the [Database Servers documentation](https://david-crty.github.io/databasement/user-guide/database-servers#supported-versions) for version-specific backup and restore details.
+启动完成后访问 <http://localhost:2226>，首次使用时创建管理员账号。
 
-## Automation
+常用命令：
 
-Databasement can be managed programmatically through its **REST API** and **MCP server**, enabling integration with scripts, CI/CD pipelines, and AI assistants.
+```bash
+make start
+make test
+make lint-check
+make phpstan
+npm run build
+```
 
-- **REST API** - Full API for managing servers, backups, and restores. See the [API documentation](https://david-crty.github.io/databasement/user-guide/api).
-- **MCP Server** - Connect AI assistants (Claude Code, Cursor, VS Code Copilot, etc.) to manage backups through natural language. See the [MCP documentation](https://david-crty.github.io/databasement/user-guide/mcp).
+当前 Fork 尚未发布独立 Docker 镜像。开发环境继续使用上游基础镜像并挂载本地源码，
+正式部署镜像发布流程将在后续单独建立。
 
-## Documentation
+## 同步上游
 
-Full documentation is available at [david-crty.github.io/databasement](https://david-crty.github.io/databasement/).
+本地仓库建议保留两个远程：
 
-For LLMs and AI assistants, the documentation is also published in the [llmstxt.org](https://llmstxt.org/) format:
-- [llms.txt](https://david-crty.github.io/databasement/llms.txt) — index of all documentation pages
-- [llms-full.txt](https://david-crty.github.io/databasement/llms-full.txt) — full documentation content in a single file
+```bash
+git remote add upstream https://github.com/David-Crty/databasement.git
+git fetch upstream
+git merge upstream/main
+```
 
-## Issues & Feature Requests
+`origin` 指向 Datacask Fork，`upstream` 指向 Databasement。品牌修改尽量限制在配置、
+页面展示和项目文档中，以降低后续合并上游更新的冲突。
 
-Found a bug? Please [open an issue](https://github.com/David-Crty/databasement/issues) with reproduction steps.
+## 上游文档
 
-Have an idea for a new feature? Start a [discussion](https://github.com/David-Crty/databasement/discussions) first so we can evaluate together whether it fits the project scope.
+完整功能和部署文档目前沿用 Databasement 上游文档：
 
-## Contributing
+- [使用文档](https://david-crty.github.io/databasement/)
+- [Docker 部署](https://david-crty.github.io/databasement/self-hosting/docker)
+- [数据库服务器](https://david-crty.github.io/databasement/user-guide/database-servers)
+- [备份配置](https://david-crty.github.io/databasement/user-guide/backups)
 
-Contributions are welcome! Before submitting a pull request, please:
+## 许可证与归属
 
-1. Check existing issues and discussions to avoid duplicates
-2. For significant changes, open an issue first to discuss the approach
-3. Follow the [development guide](https://david-crty.github.io/databasement/contributing/development) for setup instructions
-
-Small fixes (typos, documentation improvements) can be submitted directly as PRs.
-
-## Security
-
-If you discover a security vulnerability, please report it responsibly. See [SECURITY.md](SECURITY.md) for details.
-
-## License
-
-Databasement is open-source software licensed under the [MIT License](LICENSE).
+Datacask 基于 Databasement 修改，遵循 MIT License。原项目版权归 David Courtey 及
+Databasement Contributors 所有，详见 [LICENSE](LICENSE)。二次分发时必须保留原版权
+声明和许可证文本。

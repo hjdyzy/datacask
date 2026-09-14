@@ -4,7 +4,7 @@
         <div class="flex items-center gap-3 w-fit">
             <x-logo-icon class="w-10 h-10" />
             <span class="font-bold me-3 tracking-wider uppercase bg-gradient-to-r from-cyan-400 via-purple-500 to-purple-600 bg-clip-text text-transparent drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                Databasement
+                {{ config('app.name') }}
             </span>
         </div>
     </div>

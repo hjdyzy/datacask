@@ -59,7 +59,7 @@ class NotificationMessage
     public function toSlack(): SlackMessage
     {
         $message = (new SlackMessage)
-            ->username('Databasement')
+            ->username(config('app.name'))
             ->emoji($this->type->slackEmoji())
             ->text($this->title)
             ->headerBlock($this->title)

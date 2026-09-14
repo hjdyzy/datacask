@@ -47,7 +47,7 @@ test('unknown locale falls back to default', function () {
         ->get(route('preferences.edit'))
         ->assertOk();
 
-    expect(app()->getLocale())->toBe('en');
+    expect(app()->getLocale())->toBe(config('app.locale'));
 });
 
 test('setting locale via component sets cookie', function () {
@@ -70,7 +70,7 @@ test('setting invalid locale is ignored', function () {
         ->test(Preferences::class)
         ->call('setLocale', 'xx')
         ->assertNoRedirect()
-        ->assertSet('locale', 'en');
+        ->assertSet('locale', config('app.locale'));
 });
 
 test('preferences page shows language selector', function () {
@@ -79,7 +79,8 @@ test('preferences page shows language selector', function () {
     Livewire::actingAs($user)
         ->test(Preferences::class)
         ->assertSee('English')
-        ->assertSee('Français');
+        ->assertSee('Français')
+        ->assertSee('简体中文');
 });
 
 test('french translations are applied when locale is fr', function () {
@@ -90,4 +91,12 @@ test('french translations are applied when locale is fr', function () {
         ->get(route('preferences.edit'))
         ->assertOk()
         ->assertSee('Apparence');
+});
+
+test('application brand uses the configured name', function () {
+    config(['app.name' => 'Datacask']);
+
+    $this->blade('<x-app-brand />')
+        ->assertSee('Datacask')
+        ->assertDontSee('Databasement');
 });

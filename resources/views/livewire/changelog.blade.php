@@ -1,5 +1,5 @@
 <div>
-    <x-header :title="__('Changelog')" :subtitle="__('What changed in each release of Databasement')" separator>
+    <x-header :title="__('Changelog')" :subtitle="config('app.name').' · '.__('Changelog')" separator>
         <x-slot:actions>
             @if ($this->currentVersion)
                 <x-badge :value="'v'.$this->currentVersion" class="badge-primary badge-soft font-mono" />

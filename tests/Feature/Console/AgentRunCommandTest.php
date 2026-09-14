@@ -63,7 +63,7 @@ test('exits cleanly when no jobs are available', function () {
     ]);
 
     $this->artisan('agent:run --once')
-        ->expectsOutputToContain('Databasement Agent starting...')
+        ->expectsOutputToContain('Datacask Agent starting...')
         ->expectsOutputToContain('Agent stopped gracefully.')
         ->assertSuccessful();
 

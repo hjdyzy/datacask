@@ -111,12 +111,12 @@ class VersionStatus extends Component
 
     private function releaseUrl(string $tag): string
     {
-        return config('app.github_repo').'/releases/tag/'.$tag;
+        return config('app.upstream_repo').'/releases/tag/'.$tag;
     }
 
     private function githubApiUrl(): string
     {
-        $repo = config('app.github_repo');
+        $repo = config('app.upstream_repo');
         $path = trim(str_replace('https://github.com/', '', $repo), '/');
 
         return "https://api.github.com/repos/{$path}/releases/latest";

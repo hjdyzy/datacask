@@ -45,7 +45,7 @@ class DemoBackupService
         // Create database server entry based on type
         if ($databaseType === 'sqlite') {
             $databaseServer = DatabaseServer::create([
-                'name' => 'Databasement Database',
+                'name' => config('app.name').' Database',
                 'database_type' => 'sqlite',
                 'description' => 'Demo database',
                 'organization_id' => $this->currentOrganization->id(),
@@ -53,7 +53,7 @@ class DemoBackupService
             $backupDatabaseNames = [$dbConfig['database']];
         } else {
             $databaseServer = DatabaseServer::create([
-                'name' => 'Databasement Database',
+                'name' => config('app.name').' Database',
                 'host' => $dbConfig['host'] ?? '127.0.0.1',
                 'port' => (int) ($dbConfig['port'] ?? ($databaseType === 'postgres' ? 5432 : 3306)),
                 'database_type' => $databaseType,

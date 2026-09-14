@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Databasement'),
+    'name' => env('APP_NAME', 'Datacask'),
 
     /*
     |--------------------------------------------------------------------------
@@ -128,7 +128,7 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => env('APP_LOCALE', 'zh_CN'),
 
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
@@ -187,15 +187,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | GitHub Repository
+    | Source Repositories
     |--------------------------------------------------------------------------
     |
-    | The GitHub repository URL for this application. Used for linking to
-    | issues, commits, and the repository itself in the footer.
+    | The project repository is used for source and issue links. Version checks
+    | continue to follow the upstream project until this fork publishes its own
+    | release artifacts.
     |
     */
 
-    'github_repo' => 'https://github.com/David-Crty/databasement',
+    'github_repo' => env('APP_REPOSITORY', 'https://github.com/hjdyzy/datacask'),
+    'upstream_repo' => env('APP_UPSTREAM_REPOSITORY', 'https://github.com/David-Crty/databasement'),
 
     /*
     |--------------------------------------------------------------------------

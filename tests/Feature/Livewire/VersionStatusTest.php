@@ -156,3 +156,20 @@ test('github api failure is cached to avoid retries', function () {
 
     expect(Cache::get('github_latest_release'))->toBe('');
 });
+
+test('version checks follow upstream releases', function () {
+    config([
+        'app.github_repo' => 'https://github.com/hjdyzy/datacask',
+        'app.upstream_repo' => 'https://github.com/David-Crty/databasement',
+        'app.version' => 'v1.0.0',
+    ]);
+    Http::fake([
+        'api.github.com/repos/David-Crty/databasement/releases/latest' => Http::response(['tag_name' => 'v1.2.0']),
+    ]);
+
+    Livewire::actingAs(User::factory()->create())
+        ->test(VersionStatus::class)
+        ->assertSet('releaseUrl', 'https://github.com/David-Crty/databasement/releases/tag/v1.2.0');
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://api.github.com/repos/David-Crty/databasement/releases/latest');
+});
