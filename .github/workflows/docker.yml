@@ -43,25 +43,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          check_repository() {
-            local target_repository="${1%:*}"
-            skopeo list-tags --creds "${ACR_USERNAME}:${ACR_PASSWORD}" \
-              "docker://${target_repository}" >/dev/null
-          }
-
           mirror_image() {
             local source_image="$1"
             local target_image="$2"
             echo "$(date --iso-8601=seconds) operation=mirror source=${source_image} target=${target_image} result=started"
-            check_repository "${target_image}"
             skopeo copy --all --retry-times 5 \
-              --dest-creds "${ACR_USERNAME}:${ACR_PASSWORD}" \
               "docker://${source_image}" "docker://${target_image}"
-            skopeo inspect --creds "${ACR_USERNAME}:${ACR_PASSWORD}" \
-              "docker://${target_image}" >/dev/null
+            skopeo inspect "docker://${target_image}" >/dev/null
             echo "$(date --iso-8601=seconds) operation=mirror source=${source_image} target=${target_image} result=completed"
           }
 
+          printf '%s' "${ACR_PASSWORD}" | skopeo login \
+            --username "${ACR_USERNAME}" --password-stdin "${ALIYUN_REGISTRY}"
           mirror_image "${RUNTIME_SOURCE}" "${RUNTIME_TARGET}"
           mirror_image "${NODE_SOURCE}" "${NODE_TARGET}"
           mirror_image "${POSTGRES_SOURCE}" "${POSTGRES_TARGET}"
