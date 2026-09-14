@@ -2,61 +2,39 @@
 
 面向团队的自托管数据库备份与恢复平台。
 
-[![Upstream](https://img.shields.io/badge/upstream-Databasement-6366f1)](https://github.com/David-Crty/databasement)
 [![Repository](https://img.shields.io/badge/repository-hjdyzy%2Fdatacask-0f766e)](https://github.com/hjdyzy/datacask)
 [![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
 
-## 项目介绍
+Datacask 统一管理数据库实例、备份计划、备份文件和恢复任务，适合在企业内网或私有云中部署。
 
-Datacask 基于开源项目 [Databasement](https://github.com/David-Crty/databasement)
-进行二次开发，提供数据库服务器登记、自动备份、快照管理、跨实例恢复、保留策略、
-多存储后端、失败通知和团队权限控制。
+## 核心能力
 
-当前主要使用场景是 MySQL 数据库备份。一个 MySQL 实例可以按全部数据库、指定数据库
-或名称模式进行选择，每个数据库生成独立的备份任务、快照和文件。
+- 支持 MySQL、MariaDB、PostgreSQL、SQL Server、MongoDB、SQLite、Firebird 和 Redis/Valkey。
+- 集中管理多个数据库实例和数据库。
+- 支持手动备份、定时备份及独立的保留策略。
+- 每个数据库生成独立备份，便于检索、下载和恢复。
+- 支持压缩、加密、完整性校验、失败通知和操作审计。
+- 支持恢复到原实例或兼容的其他实例。
+- 支持本地磁盘、MinIO/S3、Azure Blob、Samba、SFTP 和 FTP。
+- 支持组织、成员和权限管理，以及 SSH 隧道连接。
+- 默认提供简体中文界面，并支持多语言切换。
 
-## MySQL 能力边界
+## MySQL 支持
 
-- 使用 `mariadb-dump` 生成逻辑全量备份。
-- 支持手动和周期备份、压缩、加密、校验、保留和跨实例恢复。
-- 支持将备份恢复到原实例或兼容的其他实例。
-- 不提供 MySQL 主从复制、GTID 管理、binlog 持续归档、增量备份或时间点恢复。
-- MySQL 高可用与持续同步应由 MySQL Replication、InnoDB Cluster 等独立方案负责。
+MySQL 和 MariaDB 使用逻辑全量备份，可按全部数据库、指定数据库或名称模式创建计划。
+Datacask 不提供 binlog 增量备份、时间点恢复或主从复制管理；这类能力应由 MySQL 专用方案承担。
 
-## 存储后端
+## 部署
 
-备份文件可以保存到：
+生产环境使用固定版本镜像：
 
-- 本地磁盘
-- S3 兼容对象存储，包括 MinIO
-- Azure Blob Storage
-- Samba/SMB
-- SFTP
-- FTP
-
-这里的 MinIO 仅作为备份文件的存储目标，不表示 Datacask 会备份 MinIO 中的对象数据。
-
-## 简体中文
-
-Datacask 默认使用简体中文，并保留英文、繁体中文、法语、西班牙语和希腊语。
-用户可以在偏好设置中切换语言。部署时也可以通过环境变量指定：
-
-```dotenv
-APP_NAME=Datacask
-APP_LOCALE=zh_CN
-APP_FALLBACK_LOCALE=en
+```text
+registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.1
 ```
 
-## 技术栈
+完整安装、升级和回滚步骤见 [生产部署指南](deploy/README.md)。
 
-- PHP 8.5
-- Laravel 13
-- Livewire 4
-- Mary UI、daisyUI 和 Tailwind CSS
-- Pest 5
-- Docker Compose
-
-## 本地开发
+## 开发
 
 项目要求所有 PHP、Composer 和 Pest 命令在 Docker 中运行。准备好 Docker 后执行：
 
@@ -78,35 +56,7 @@ make phpstan
 npm run build
 ```
 
-正式版本同时发布到阿里云 ACR 和 GitHub Container Registry。国内生产服务器默认使用
-`registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask`，具体配置、验收和回滚步骤见
-[生产部署说明](deploy/README.md)。
-
-## 同步上游
-
-本地仓库建议保留两个远程：
-
-```bash
-git remote add upstream https://github.com/David-Crty/databasement.git
-git fetch upstream
-git merge upstream/main
-```
-
-`origin` 指向 Datacask Fork，`upstream` 指向 Databasement。品牌修改尽量限制在配置、
-页面展示和项目文档中，以降低后续合并上游更新的冲突。
-
-## 文档
-
-Datacask 的生产部署使用本仓库维护的 Compose 文件和阿里云 ACR 镜像：
-
-- [Docker 生产部署](deploy/README.md)
-
-以下 Databasement 上游文档仅用于功能参考，其中的仓库地址、镜像名称和部署命令不适用于 Datacask：
-
-- [数据库服务器功能参考](https://david-crty.github.io/databasement/user-guide/database-servers)
-- [备份配置功能参考](https://david-crty.github.io/databasement/user-guide/backups)
-
-## 许可证与归属
+## 许可证
 
 Datacask 基于 Databasement 修改，遵循 MIT License。原项目版权归 David Courtey 及
 Databasement Contributors 所有，详见 [LICENSE](LICENSE)。二次分发时必须保留原版权
