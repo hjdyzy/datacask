@@ -95,14 +95,16 @@ git merge upstream/main
 `origin` 指向 Datacask Fork，`upstream` 指向 Databasement。品牌修改尽量限制在配置、
 页面展示和项目文档中，以降低后续合并上游更新的冲突。
 
-## 上游文档
+## 文档
 
-完整功能和部署文档目前沿用 Databasement 上游文档：
+Datacask 的生产部署使用本仓库维护的 Compose 文件和阿里云 ACR 镜像：
 
-- [使用文档](https://david-crty.github.io/databasement/)
-- [Docker 部署](https://david-crty.github.io/databasement/self-hosting/docker)
-- [数据库服务器](https://david-crty.github.io/databasement/user-guide/database-servers)
-- [备份配置](https://david-crty.github.io/databasement/user-guide/backups)
+- [Docker 生产部署](deploy/README.md)
+
+以下 Databasement 上游文档仅用于功能参考，其中的仓库地址、镜像名称和部署命令不适用于 Datacask：
+
+- [数据库服务器功能参考](https://david-crty.github.io/databasement/user-guide/database-servers)
+- [备份配置功能参考](https://david-crty.github.io/databasement/user-guide/backups)
 
 ## 许可证与归属
 

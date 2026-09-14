@@ -20,10 +20,19 @@ sudo chown -R "$(id -u):$(id -g)" /opt/datacask
 cd /opt/datacask
 ```
 
-将 `compose.yaml` 和 `.env.example` 放入该目录，然后生成正式环境文件：
+从 Datacask 的正式版本下载 `compose.yaml` 和 `.env.example`，然后生成正式环境文件：
 
 ```bash
-cp .env.example .env
+set -euo pipefail
+DATACASK_RELEASE=v1.7.14-dc.1
+DATACASK_RAW_URL="https://raw.githubusercontent.com/hjdyzy/datacask/${DATACASK_RELEASE}/deploy"
+
+curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
+    --output compose.yaml "${DATACASK_RAW_URL}/compose.yaml"
+curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
+    --output .env.example "${DATACASK_RAW_URL}/.env.example"
+
+test -f .env || cp .env.example .env
 chmod 600 .env
 ```
 
