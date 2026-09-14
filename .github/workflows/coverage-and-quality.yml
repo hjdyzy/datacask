@@ -114,7 +114,7 @@ jobs:
       - name: SonarQube Scan (main)
         # Analyse the main branch, using the coverage.xml and junit.xml
         # produced by the triggering `tests` run.
-        if: ${{ github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' && hashFiles('coverage.xml') != '' }}
+        if: ${{ vars.SONAR_ENABLED == 'true' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' && hashFiles('coverage.xml') != '' }}
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -131,7 +131,7 @@ jobs:
         # Gate and inline issues. The `pull_requests` payload is unreliable in
         # workflow_run, so we drive this off the PR number and base branch
         # resolved above.
-        if: ${{ github.event.workflow_run.event == 'pull_request' && steps.meta.outputs.number != '' && hashFiles('coverage.xml') != '' }}
+        if: ${{ vars.SONAR_ENABLED == 'true' && github.event.workflow_run.event == 'pull_request' && steps.meta.outputs.number != '' && hashFiles('coverage.xml') != '' }}
         uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
