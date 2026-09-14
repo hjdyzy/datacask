@@ -1,4 +1,5 @@
-ARG BASE_IMAGE=davidcrty/databasement-php:latest
+ARG BASE_IMAGE=ghcr.io/david-crty/databasement-php@sha256:6494373e3ec937d7ec056a0ea708b3c95f0d166dce5cdb15d2cf609a7718fd86
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
 FROM ${BASE_IMAGE} AS backend-build
 
 USER 1000
@@ -9,7 +10,7 @@ RUN composer install --dev --no-interaction --no-progress --no-suggest --optimiz
 RUN php artisan vendor:publish --force --tag=livewire:assets
 
 
-FROM node:22-slim AS frontend-build
+FROM ${NODE_IMAGE} AS frontend-build
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -19,7 +20,7 @@ COPY --from=backend-build /app /app
 RUN npm run build
 
 
-ARG BASE_IMAGE=davidcrty/databasement-php:latest
+ARG BASE_IMAGE=ghcr.io/david-crty/databasement-php@sha256:6494373e3ec937d7ec056a0ea708b3c95f0d166dce5cdb15d2cf609a7718fd86
 FROM ${BASE_IMAGE}
 
 ARG APP_COMMIT_HASH=""

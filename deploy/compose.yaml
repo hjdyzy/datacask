@@ -1,0 +1,72 @@
+name: datacask
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 50m
+    max-file: "5"
+
+x-datacask-service: &datacask-service
+  image: ${DATACASK_IMAGE:?Set DATACASK_IMAGE in .env}
+  restart: unless-stopped
+  init: true
+  env_file:
+    - ${DATACASK_ENV_FILE:-.env}
+  volumes:
+    - ./data:/data
+  logging: *default-logging
+
+services:
+  app:
+    <<: *datacask-service
+    ports:
+      - "127.0.0.1:${DATACASK_HTTP_PORT:-2226}:2226"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:2226/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    cpus: 1.0
+    mem_limit: 1g
+
+  worker:
+    <<: *datacask-service
+    command:
+      - sh
+      - -c
+      - >-
+        php artisan db:wait --check-migrations &&
+        php artisan queue:work --queue=backups,default --tries=3
+        --timeout=$${BACKUP_JOB_TIMEOUT_SECONDS:-10800} --sleep=3 --max-jobs=500
+    deploy:
+      replicas: 2
+    depends_on:
+      app:
+        condition: service_healthy
+    stop_grace_period: 3h10m
+    cpus: 3.0
+    mem_limit: 4g
+
+  postgres:
+    image: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-datacask}
+      POSTGRES_USER: ${DB_USERNAME:-datacask}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    cpus: 1.0
+    mem_limit: 2g
+    logging: *default-logging
