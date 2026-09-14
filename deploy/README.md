@@ -9,7 +9,6 @@
 - Docker Engine 与 Docker Compose 插件
 - 服务器能够访问待备份 MySQL 实例和外部 MinIO
 - 域名及 HTTPS 反向代理
-- 阿里云 ACR 拉取凭据
 
 ## 首次部署
 
@@ -25,8 +24,8 @@ cd /opt/datacask
 
 ```bash
 set -euo pipefail
-DATACASK_RELEASE=v1.7.14-dc.1
-DATACASK_RAW_URL="https://raw.githubusercontent.com/hjdyzy/datacask/${DATACASK_RELEASE}/deploy"
+DATACASK_SOURCE_REF=main
+DATACASK_RAW_URL="https://raw.githubusercontent.com/hjdyzy/datacask/${DATACASK_SOURCE_REF}/deploy"
 
 curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
     --output compose.yaml "${DATACASK_RAW_URL}/compose.yaml"
@@ -37,18 +36,10 @@ test -f .env || cp .env.example .env
 chmod 600 .env
 ```
 
-登录阿里云 ACR：
-
-```bash
-docker login registry.cn-guangzhou.aliyuncs.com --username "<ACR 用户名>"
-```
-
-按提示输入 ACR 密码。
-
 生成应用密钥：
 
 ```bash
-docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.1 \
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest \
     php artisan key:generate --show
 ```
 
@@ -91,13 +82,13 @@ backup.example.com {
 
 ## 升级
 
-生产环境只使用精确版本标签。升级前保存 `.env`、`data/`，并备份 PostgreSQL：
+`latest` 只指向最新正式版本。升级前保存 `.env`、`data/`，并备份 PostgreSQL：
 
 ```bash
 docker compose exec -T postgres pg_dump -U datacask -d datacask -Fc > "datacask-$(date +%Y%m%d-%H%M%S).dump"
 ```
 
-等待运行中的备份任务完成，修改 `.env` 中的 `DATACASK_IMAGE` 后执行：
+等待运行中的备份任务完成，然后拉取最新镜像：
 
 ```bash
 docker compose pull
@@ -108,7 +99,13 @@ curl -fsS http://127.0.0.1:2226/health
 
 ## 回滚
 
-将 `DATACASK_IMAGE` 改回上一个已验证版本，再运行：
+将 `.env` 中的 `DATACASK_IMAGE` 改为上一个已验证版本，例如：
+
+```dotenv
+DATACASK_IMAGE=registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.1
+```
+
+重新创建容器：
 
 ```bash
 docker compose pull

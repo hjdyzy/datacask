@@ -26,10 +26,10 @@ Datacask 不提供 binlog 增量备份、时间点恢复或主从复制管理；
 
 ## 部署
 
-生产环境使用固定版本镜像：
+生产环境默认跟随最新正式版本：
 
 ```text
-registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.1
+registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 ```
 
 完整安装、升级和回滚步骤见 [生产部署指南](deploy/README.md)。
