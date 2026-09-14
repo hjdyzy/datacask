@@ -3,7 +3,31 @@ name: tests
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '*.md'
+      - '**/*.md'
+      - 'docs/**'
+      - 'deploy/**'
+      - 'helm/**'
+      - 'LICENSE'
+      - '.github/workflows/dependencies.yml'
+      - '.github/workflows/docs.yml'
+      - '.github/workflows/docker.yml'
+      - '.github/workflows/helm.yml'
+      - '.github/workflows/release.yml'
   pull_request:
+    paths-ignore:
+      - '*.md'
+      - '**/*.md'
+      - 'docs/**'
+      - 'deploy/**'
+      - 'helm/**'
+      - 'LICENSE'
+      - '.github/workflows/dependencies.yml'
+      - '.github/workflows/docs.yml'
+      - '.github/workflows/docker.yml'
+      - '.github/workflows/helm.yml'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: read

@@ -1,0 +1,85 @@
+name: Mirror Dependency Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/dependencies.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dependencies-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_SOURCE: public.ecr.aws/docker/library/node@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+  NODE_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/node:22-slim-sha83f487e
+  POSTGRES_SOURCE: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+  POSTGRES_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/postgres:17.11-alpine-sha18cfe3e
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.cn-guangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Install Skopeo
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+
+      - name: Mirror dependency images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          copy_platform() {
+            local source_image="$1"
+            local target_image="$2"
+            local architecture="$3"
+            local platform_target="${target_image}-${architecture}"
+            local error_line
+            local -a mirror_lines
+            local mirror_output
+            echo "$(date --iso-8601=seconds) operation=mirror source=${source_image} target=${platform_target} architecture=${architecture} result=started"
+
+            if ! mirror_output="$(skopeo copy --format v2s2 --retry-times 5 \
+              --override-os linux --override-arch "${architecture}" \
+              --dest-authfile "${HOME}/.docker/config.json" \
+              "docker://${source_image}" "docker://${platform_target}" 2>&1)"; then
+              printf '%s\n' "${mirror_output}"
+              mapfile -t mirror_lines <<< "${mirror_output}"
+              error_line="${mirror_lines[-1]:-Unknown Skopeo error}"
+              error_line="${error_line//'%'/'%25'}"
+              printf '::error title=Image mirror failed::target=%s error=%s\n' \
+                "${platform_target}" "${error_line}"
+              return 1
+            fi
+          }
+
+          mirror_image() {
+            local source_image="$1"
+            local target_image="$2"
+            copy_platform "${source_image}" "${target_image}" amd64
+            copy_platform "${source_image}" "${target_image}" arm64
+            docker buildx imagetools create --tag "${target_image}" \
+              "${target_image}-amd64" "${target_image}-arm64"
+            docker buildx imagetools inspect "${target_image}" >/dev/null
+            echo "$(date --iso-8601=seconds) operation=mirror source=${source_image} target=${target_image} result=completed"
+          }
+
+          mirror_image "${NODE_SOURCE}" "${NODE_TARGET}"
+          mirror_image "${POSTGRES_SOURCE}" "${POSTGRES_TARGET}"

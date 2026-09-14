@@ -8,7 +8,7 @@
 - Linux 服务器
 - Docker Engine 与 Docker Compose 插件
 - 服务器能够访问待备份 MySQL 实例和外部 MinIO
-- 域名及 HTTPS 反向代理
+- 服务器具有固定内网 IP，防火墙允许可信网段访问 TCP `2226`
 
 ## 首次部署
 
@@ -43,13 +43,18 @@ docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest \
     php artisan key:generate --show
 ```
 
-将生成的密钥写入 `.env`，并设置访问地址和数据库密码：
+将生成的密钥完整写入 `.env`，并将示例 IP 替换为服务器的真实内网 IP：
 
 ```dotenv
-APP_URL=https://backup.example.com
+DATACASK_BIND_ADDRESS=0.0.0.0
+DATACASK_HTTP_PORT=2226
+APP_URL=http://192.168.2.2:2226
 APP_KEY=base64:replace-with-generated-key
 DB_PASSWORD=replace-with-a-strong-password
 ```
+
+`APP_URL` 必须与浏览器实际使用的地址一致，不能留空或随意填写。没有域名时可以直接使用
+`http://<服务器内网 IP>:2226`。
 
 请妥善备份 `.env`，丢失 `APP_KEY` 将导致已保存的数据库和存储凭据无法解密。
 
@@ -63,13 +68,7 @@ curl -fsS http://127.0.0.1:2226/health
 docker compose logs --tail=100 app worker
 ```
 
-应用监听 `127.0.0.1:2226`，需要通过 HTTPS 反向代理访问。Caddy 示例：
-
-```caddyfile
-backup.example.com {
-    reverse_proxy 127.0.0.1:2226
-}
-```
+浏览器访问 `.env` 中配置的 `APP_URL`。HTTP 方式仅适用于可信内网，不要将 `2226` 端口直接暴露到互联网。
 
 登录 Datacask 后，在“卷”中添加 S3 存储，填写 MinIO 端点、存储桶、区域和专用访问密钥。
 

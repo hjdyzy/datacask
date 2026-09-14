@@ -20,7 +20,7 @@ services:
   app:
     <<: *datacask-service
     ports:
-      - "127.0.0.1:${DATACASK_HTTP_PORT:-2226}:2226"
+      - "${DATACASK_BIND_ADDRESS:-0.0.0.0}:${DATACASK_HTTP_PORT:-2226}:2226"
     depends_on:
       postgres:
         condition: service_healthy
