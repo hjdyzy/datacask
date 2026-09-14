@@ -52,7 +52,7 @@ services:
     mem_limit: 4g
 
   postgres:
-    image: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    image: registry.cn-guangzhou.aliyuncs.com/hjdyzy/postgres:17.11-alpine-sha18cfe3e
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE:-datacask}

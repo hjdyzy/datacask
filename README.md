@@ -78,8 +78,9 @@ make phpstan
 npm run build
 ```
 
-当前 Fork 尚未发布独立 Docker 镜像。开发环境继续使用上游基础镜像并挂载本地源码，
-正式部署镜像发布流程将在后续单独建立。
+正式版本同时发布到阿里云 ACR 和 GitHub Container Registry。国内生产服务器默认使用
+`registry.cn-guangzhou.aliyuncs.com/hjdyzy/datacask`，具体配置、验收和回滚步骤见
+[生产部署说明](deploy/README.md)。
 
 ## 同步上游
 

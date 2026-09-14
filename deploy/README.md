@@ -8,7 +8,7 @@
 - Docker Engine 与 Docker Compose 插件
 - 服务器能够访问待备份 MySQL 实例和外部 MinIO
 - 一个指向服务器的域名，以及宿主机上的 Nginx、Caddy 或其他 HTTPS 反向代理
-- GHCR 镜像为私有时，需要具有 `read:packages` 权限的 GitHub PAT
+- 阿里云 ACR 镜像为私有时，需要具有拉取权限的固定密码或访问凭据
 
 ## 首次部署
 
@@ -27,16 +27,18 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-GHCR 镜像为私有时先登录：
+阿里云 ACR 镜像为私有时先登录：
 
 ```bash
-printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u hjdyzy --password-stdin
+printf '%s' "$ALIYUN_REGISTRY_PASSWORD" | docker login registry.cn-guangzhou.aliyuncs.com \
+    --username "$ALIYUN_REGISTRY_USERNAME" --password-stdin
 ```
 
 生成应用密钥：
 
 ```bash
-docker run --rm ghcr.io/hjdyzy/datacask:1.7.14-dc.1 php artisan key:generate --show
+docker run --rm registry.cn-guangzhou.aliyuncs.com/hjdyzy/datacask:1.7.14-dc.1 \
+    php artisan key:generate --show
 ```
 
 编辑 `.env`，至少替换 `APP_URL`、`APP_KEY` 和 `DB_PASSWORD`。`APP_KEY` 用于加密数据库和存储凭据，必须在独立的安全位置长期备份。
@@ -60,6 +62,22 @@ backup.example.com {
 ```
 
 登录 Datacask 后，在卷配置中添加外部 MinIO，使用 S3 兼容端点、存储桶、区域和专用访问密钥。不要把 MinIO 凭据写入仓库。
+
+## 镜像发布准备
+
+在阿里云容器镜像服务广州地域的 `hjdyzy` 命名空间中创建以下镜像仓库：
+
+- `datacask`
+- `datacask-php`
+- `node`
+- `postgres`
+
+在 GitHub 仓库的 Actions secrets 中配置：
+
+- `ALIYUN_REGISTRY_USERNAME`
+- `ALIYUN_REGISTRY_PASSWORD`
+
+推送 `main` 或 `v*` 标签时，工作流会先将固定摘要的基础镜像、Node 和 PostgreSQL 镜像复制到阿里云，再把 Datacask 成品镜像同时发布到阿里云 ACR 与 GHCR。生产环境默认拉取阿里云镜像。
 
 ## 首次验收
 
