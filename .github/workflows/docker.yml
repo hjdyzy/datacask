@@ -15,14 +15,114 @@ concurrency:
 env:
   ALIYUN_REGISTRY: registry.cn-guangzhou.aliyuncs.com
   ALIYUN_NAMESPACE: zhisuaninfo
-  RUNTIME_SOURCE: ghcr.io/david-crty/databasement-php@sha256:6494373e3ec937d7ec056a0ea708b3c95f0d166dce5cdb15d2cf609a7718fd86
-  RUNTIME_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask-php:upstream-1.7.14-sha6494373
   NODE_SOURCE: public.ecr.aws/docker/library/node@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
   NODE_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/node:22-slim-sha83f487e
   POSTGRES_SOURCE: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
   POSTGRES_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/postgres:17.11-alpine-sha18cfe3e
 
 jobs:
+  build-base-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      base_image_tag: ${{ steps.base_image_tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check for base image changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            base:
+              - 'docker/php/**'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Check for existing base image
+        id: base_image_check
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${ALIYUN_REGISTRY}/${ALIYUN_NAMESPACE}/datacask-php:latest"
+          if docker buildx imagetools inspect "${image}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Generate base image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ghcr.io/${{ github.repository_owner }}/datacask-php
+            ${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAMESPACE }}/datacask-php
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
+
+      - name: Build and push base image
+        if: steps.filter.outputs.base == 'true' || steps.base_image_check.outputs.exists != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: docker/php
+          push: true
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Determine base image tag for application build
+        id: base_image_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.filter.outputs.base }}" == "true" || "${{ steps.base_image_check.outputs.exists }}" != "true" ]]; then
+            echo "tag=${{ steps.meta.outputs.version }}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tag=latest" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Publish base image summary
+        shell: bash
+        run: |
+          echo "### Datacask runtime image" >> "${GITHUB_STEP_SUMMARY}"
+          if [[ "${{ steps.filter.outputs.base }}" == "true" || "${{ steps.base_image_check.outputs.exists }}" != "true" ]]; then
+            echo "Built and pushed from docker/php/:" >> "${GITHUB_STEP_SUMMARY}"
+            echo '```text' >> "${GITHUB_STEP_SUMMARY}"
+            echo "${{ steps.meta.outputs.tags }}" >> "${GITHUB_STEP_SUMMARY}"
+            echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "No runtime changes; using datacask-php:latest." >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
   mirror-dependencies:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -87,11 +187,12 @@ jobs:
 
           mirror_image "${NODE_SOURCE}" "${NODE_TARGET}"
           mirror_image "${POSTGRES_SOURCE}" "${POSTGRES_TARGET}"
-          mirror_image "${RUNTIME_SOURCE}" "${RUNTIME_TARGET}"
 
   build-app-image:
     runs-on: ubuntu-latest
-    needs: mirror-dependencies
+    needs:
+      - build-base-image
+      - mirror-dependencies
     permissions:
       contents: read
       packages: write
@@ -127,9 +228,11 @@ jobs:
             ${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAMESPACE }}/datacask
           tags: |
             type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-
+            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
 
       - name: Build and push application image
         uses: docker/build-push-action@v7
@@ -144,7 +247,7 @@ jobs:
           build-args: |
             APP_COMMIT_HASH=${{ github.sha }}
             APP_VERSION=${{ startsWith(github.ref, 'refs/tags/v') && steps.meta.outputs.version || '' }}
-            BASE_IMAGE=${{ env.RUNTIME_TARGET }}
+            BASE_IMAGE=${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAMESPACE }}/datacask-php:${{ needs.build-base-image.outputs.base_image_tag }}
             NODE_IMAGE=${{ env.NODE_TARGET }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
