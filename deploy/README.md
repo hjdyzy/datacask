@@ -37,7 +37,7 @@ printf '%s' "$ALIYUN_REGISTRY_PASSWORD" | docker login registry.cn-guangzhou.ali
 生成应用密钥：
 
 ```bash
-docker run --rm registry.cn-guangzhou.aliyuncs.com/hjdyzy/datacask:1.7.14-dc.1 \
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.1 \
     php artisan key:generate --show
 ```
 
@@ -65,12 +65,20 @@ backup.example.com {
 
 ## 镜像发布准备
 
-在阿里云容器镜像服务广州地域的 `hjdyzy` 命名空间中创建以下镜像仓库：
+在阿里云容器镜像服务广州地域的 `zhisuaninfo` 命名空间中创建以下镜像仓库：
 
 - `datacask`
 - `datacask-php`
 - `node`
 - `postgres`
+
+依赖镜像使用固定的多架构索引摘要：
+
+- `datacask-php`: `sha256:6494373e3ec937d7ec056a0ea708b3c95f0d166dce5cdb15d2cf609a7718fd86`
+- `node`: `sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5`
+- `postgres`: `sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73`
+
+Datacask 成品镜像的摘要由每次版本构建生成，应在部署前从 ACR 或 GHCR 核对。
 
 在 GitHub 仓库的 Actions secrets 中配置：
 

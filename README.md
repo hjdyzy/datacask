@@ -79,7 +79,7 @@ npm run build
 ```
 
 正式版本同时发布到阿里云 ACR 和 GitHub Container Registry。国内生产服务器默认使用
-`registry.cn-guangzhou.aliyuncs.com/hjdyzy/datacask`，具体配置、验收和回滚步骤见
+`registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask`，具体配置、验收和回滚步骤见
 [生产部署说明](deploy/README.md)。
 
 ## 同步上游

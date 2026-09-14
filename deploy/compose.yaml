@@ -52,7 +52,7 @@ services:
     mem_limit: 4g
 
   postgres:
-    image: registry.cn-guangzhou.aliyuncs.com/hjdyzy/postgres:17.11-alpine-sha18cfe3e
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/postgres:17.11-alpine-sha18cfe3e
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE:-datacask}

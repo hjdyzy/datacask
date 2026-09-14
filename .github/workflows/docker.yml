@@ -14,13 +14,13 @@ concurrency:
 
 env:
   ALIYUN_REGISTRY: registry.cn-guangzhou.aliyuncs.com
-  ALIYUN_NAMESPACE: hjdyzy
+  ALIYUN_NAMESPACE: zhisuaninfo
   RUNTIME_SOURCE: ghcr.io/david-crty/databasement-php@sha256:6494373e3ec937d7ec056a0ea708b3c95f0d166dce5cdb15d2cf609a7718fd86
-  RUNTIME_TARGET: registry.cn-guangzhou.aliyuncs.com/hjdyzy/datacask-php:upstream-1.7.14-sha6494373
+  RUNTIME_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask-php:upstream-1.7.14-sha6494373
   NODE_SOURCE: public.ecr.aws/docker/library/node@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
-  NODE_TARGET: registry.cn-guangzhou.aliyuncs.com/hjdyzy/node:22-slim-sha83f487e
+  NODE_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/node:22-slim-sha83f487e
   POSTGRES_SOURCE: public.ecr.aws/docker/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
-  POSTGRES_TARGET: registry.cn-guangzhou.aliyuncs.com/hjdyzy/postgres:17.11-alpine-sha18cfe3e
+  POSTGRES_TARGET: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/postgres:17.11-alpine-sha18cfe3e
 
 jobs:
   mirror-dependencies:
