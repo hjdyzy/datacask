@@ -45,8 +45,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify documentation toolchain
+        run: |
+          command -v node
+          node --version
+          npm --version
+          npx --version
+
       - name: Prepare versioned docs from tags
-        run: ./scripts/prepare-versions.sh
+        run: bash -euxo pipefail ./scripts/prepare-versions.sh
 
       - name: Build documentation
         run: npm run build

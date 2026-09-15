@@ -6,6 +6,7 @@
 #
 # Requires the full tag list (CI must checkout with fetch-depth: 0).
 set -euo pipefail
+set -x
 
 DOCS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$DOCS_DIR/.." && pwd)"
@@ -34,6 +35,11 @@ if [ -z "$MINORS" ]; then
     echo "No v1.x.y tags found — nothing to version."
     exit 0
 fi
+
+command -v node
+node --version
+command -v npm
+npm --version
 
 # Cut versions oldest-first so versions.json ends up newest-first
 for MINOR in $MINORS; do
