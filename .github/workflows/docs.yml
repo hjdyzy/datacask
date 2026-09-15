@@ -52,9 +52,6 @@ jobs:
           npm --version
           npx --version
 
-      - name: Prepare versioned docs from tags
-        run: bash -euxo pipefail ./scripts/prepare-versions.sh
-
       - name: Build documentation
         run: npm run build
         env:

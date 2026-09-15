@@ -1,6 +1,6 @@
 # Documentation (Docusaurus 3)
 
-GitHub Pages site at `https://hjdyzy.github.io/datacask/`, deployed by `.github/workflows/docs.yml` on every `v*` tag push or a manual workflow run.
+GitHub Pages site at `https://hjdyzy.github.io/datacask/`, deployed by `.github/workflows/docs.yml` on every `v*` tag push or a manual workflow run. The workflow builds the current Datacask docs; `scripts/prepare-versions.sh` remains available for a future versioned release build.
 
 ## Commands
 
