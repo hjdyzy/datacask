@@ -1,0 +1,4001 @@
+# Datacask Documentation
+
+> Self-hosting and user documentation for Datacask database backup management.
+
+This file contains all documentation content in a single document following the llmstxt.org standard.
+
+## Introduction
+
+
+Welcome to the **Self-Hosting** section of the **Datacask documentation**!
+
+Datacask is a web application for managing database server backups. It allows you to register database servers (MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, Redis/Valkey), test connections, schedule automated backups, and restore snapshots to any registered server.
+
+## Getting Started
+
+We provide guides to deploy Datacask using:
+
+- [**Docker**](docker) - Single container deployment (recommended for most users)
+- [**Docker Compose**](docker-compose) - Multi-container setup with external database
+- [**Kubernetes + Helm**](kubernetes-helm) - For Kubernetes clusters
+- [**Native Ubuntu**](native-ubuntu) - Traditional installation without Docker
+
+See [Versioning](versioning) for available Docker image tags and Helm chart versions.
+
+## Requirements
+
+Datacask runs in a single container that includes:
+- FrankenPHP web server
+- Queue worker for async backup/restore jobs
+- Scheduler for automated backups
+
+The only external requirement is a database for the application itself:
+- **SQLite** (simplest, built into the container)
+- **MySQL/MariaDB** or **PostgreSQL** (recommended for production)
+
+### Supported Application Database Versions
+
+| Engine     | Minimum Version | Recommended |
+|------------|-----------------|-------------|
+| SQLite     | 3.26+           | Latest      |
+| MySQL      | 5.7+            | 8.x         |
+| MariaDB    | 10.3+           | 11.x        |
+| PostgreSQL | 10.0+           | 16+         |
+
+These are the databases Datacask uses to store its own configuration, users, and backup metadata -- not the databases you back up (see [Supported Versions](../user-guide/database-servers#supported-versions) for that).
+
+## Quick Start
+
+The fastest way to try Datacask:
+
+```bash
+docker run -d \
+  --name datacask \
+  -p 2226:2226 \
+  -e DB_CONNECTION=sqlite \
+  -e DB_DATABASE=/data/database.sqlite \
+  -e ENABLE_QUEUE_WORKER=true \
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+```
+
+Then open http://localhost:2226 in your browser and create your first admin account.
+
+:::note
+This quick start uses SQLite for the application database. For production deployments, see the [Docker guide](docker) for recommended configurations.
+:::
+
+## Support
+
+If you encounter issues with self-hosting, please open an issue on [GitHub](https://github.com/hjdyzy/datacask/issues).
+
+---
+
+## Docker Compose
+
+
+This guide will help you deploy Datacask using Docker Compose. This method is ideal when you want to run Datacask alongside its own dedicated database container.
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/engine/install/) and [Docker Compose](https://docs.docker.com/compose/install/)
+- A [supported application database](intro#supported-application-database-versions) (SQLite, MySQL, MariaDB, or PostgreSQL)
+
+## Quick Start
+
+### 1. Create Project Directory
+
+```bash
+mkdir datacask && cd datacask
+```
+
+### 2. Generate Application Key
+
+```bash
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
+```
+
+Save this key for the next step.
+
+### 3. Create Environment File
+
+Create a `.env` file with your configuration. This file is shared between the `app` and `worker` services to ensure consistent settings.
+
+#### SQLite
+
+```bash title=".env"
+APP_URL=http://localhost:2226
+APP_KEY=base64:your-generated-key-here
+
+# Database (SQLite)
+DB_CONNECTION=sqlite
+DB_DATABASE=/data/database.sqlite
+```
+
+#### MySQL
+
+```bash title=".env"
+APP_URL=http://localhost:2226
+APP_KEY=base64:your-generated-key-here
+
+# Database (MySQL)
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=databasement
+DB_USERNAME=databasement
+DB_PASSWORD=your-secure-password
+```
+
+#### PostgreSQL
+
+```bash title=".env"
+APP_URL=http://localhost:2226
+APP_KEY=base64:your-generated-key-here
+
+# Database (PostgreSQL)
+DB_CONNECTION=pgsql
+DB_HOST=postgres
+DB_PORT=5432
+DB_DATABASE=databasement
+DB_USERNAME=databasement
+DB_PASSWORD=your-secure-password
+```
+
+:::tip S3 Storage
+To store backups in AWS S3 or S3-compatible storage (MinIO, DigitalOcean Spaces, etc.), see the [S3 Storage Configuration](./configuration/backup#s3-storage) section.
+:::
+
+### 4. Create docker-compose.yml
+
+#### SQLite
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    container_name: datacask
+    restart: unless-stopped
+    ports:
+      - "2226:2226"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2226/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    restart: unless-stopped
+    deploy:
+      replicas: 1   # increase to run more backups in parallel
+    command: sh -c "php artisan db:wait --check-migrations && php artisan queue:work --queue=backups,default --tries=3 --timeout=3600 --sleep=3 --max-jobs=1000"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+```
+
+#### MySQL
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    container_name: datacask
+    restart: unless-stopped
+    ports:
+      - "2226:2226"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2226/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    restart: unless-stopped
+    deploy:
+      replicas: 1   # increase to run more backups in parallel
+    command: sh -c "php artisan db:wait --check-migrations && php artisan queue:work --queue=backups,default --tries=3 --timeout=3600 --sleep=3 --max-jobs=1000"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    container_name: datacask-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: your-root-password
+      MYSQL_DATABASE: databasement
+      MYSQL_USER: databasement
+      MYSQL_PASSWORD: your-secure-password
+    volumes:
+      - ./mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
+
+#### PostgreSQL
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    container_name: datacask
+    restart: unless-stopped
+    ports:
+      - "2226:2226"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2226/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    restart: unless-stopped
+    deploy:
+      replicas: 1   # increase to run more backups in parallel
+    command: sh -c "php artisan db:wait --check-migrations && php artisan queue:work --queue=backups,default --tries=3 --timeout=3600 --sleep=3 --max-jobs=1000"
+    env_file: .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16
+    container_name: datacask-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: databasement
+      POSTGRES_USER: databasement
+      POSTGRES_PASSWORD: your-secure-password
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U databasement -d databasement"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
+
+:::tip Pin a version
+See [Versioning](versioning) for available tags.
+:::
+
+:::tip
+Remember to restart both the `app` and `worker` services whenever you change the `.env` file: `docker compose restart app worker`
+:::
+
+:::tip
+The `worker` service runs the Laravel queue worker as a separate container. This provides better stability and allows independent restarts without affecting the web application. The worker processes backup and restore jobs from the queue.
+:::
+
+### 5. Start the Services
+
+```bash
+docker compose up -d
+```
+
+### 6. Verify the Setup
+
+Wait for all services to be healthy, then verify the application is running:
+
+```bash
+# Check service status
+docker compose ps
+
+# Verify health endpoint
+curl http://localhost:2226/health
+```
+
+### 7. Access the Application
+
+Open http://localhost:2226 in your browser.
+
+:::note
+To expose your Datacask instance with HTTPS, you can use Traefik as a reverse proxy. For detailed instructions on
+how to configure Traefik with Docker, please refer to
+the [official Traefik documentation](https://doc.traefik.io/traefik/expose/docker/).
+
+The image listens on port `2226`. Because it also inherits ports from its FrankenPHP base, point Traefik at `2226`
+explicitly with `traefik.http.services.<name>.loadbalancer.server.port=2226` so it routes to the right one.
+:::
+
+## Custom User ID (PUID/PGID)
+
+By default, the application runs as PUID/PGID `1000`. You can customize this using the `PUID` and `PGID` environment variables:
+
+```yaml title="docker-compose.yml"
+services:
+  app:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    environment:
+      PUID: 1001
+      PGID: 1001
+    # ... rest of config
+
+  worker:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    environment:
+      PUID: 1001
+      PGID: 1001
+    # ... rest of config
+```
+
+:::tip
+Find your user's PUID/PGID with `id username`. The container will automatically set the correct permissions on `/data` for the specified PUID/PGID.
+:::
+
+### Rootless Containers
+
+For rootless Docker or Podman environments, use the `user` directive. When using this method, the container runs entirely as the specified user and skips the automatic permission fix:
+
+```yaml
+services:
+  app:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    user: "1010:1010"
+    # ... rest of config
+
+  worker:
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    user: "1010:1010"
+    # ... rest of config
+```
+
+:::note
+When using `user`, you must manually set `/data` directory volume permissions before starting the container since the automatic permission fix requires root: `sudo chown 1010:1010 /path/to/databasement/data`
+:::
+
+## Updating
+
+Update the image tag in your `docker-compose.yml`, then pull and recreate. Migrations run automatically on startup.
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+See [Versioning](versioning) for available versions.
+
+## Troubleshooting
+
+### Database connection errors
+```
+SQLSTATE[HY000] [2002] No such file or directory
+# or 
+SQLSTATE[HY000] [2002] Connection refused
+```
+
+**Cause:** The database container isn't ready yet, or the port/host configuration is incorrect.
+
+**Solution:**
+1. Check if the database container is healthy: `docker compose ps`
+2. Verify `DB_PORT` matches your database (MySQL: `3306`, PostgreSQL: `5432`)
+3. Ensure `DB_HOST` matches your Docker Compose service name exactly (e.g. `mysql` or `postgres`)
+
+### Container keeps restarting
+
+**Cause:** Application error during startup.
+
+**Solution:** Check the logs to identify the issue:
+```bash
+docker compose logs -f app
+docker compose logs -f worker
+```
+
+### Permission denied on /data
+
+**Cause:** The container user doesn't have write access to the mounted volume.
+
+**Solution:** Either:
+1. Set `PUID`/`PGID` to match your host user (see [Custom User ID](#custom-user-id-puidpgid))
+2. Or fix permissions manually: `sudo chown -R 1000:1000 ./data` (replace `1000` with your PUID/PGID)
+
+### Database tables are empty after startup
+
+**Cause:** This is expected on first run. Migrations run automatically when the app starts.
+
+**Solution:** Check if migrations ran successfully:
+```bash
+docker compose logs app | grep -i migration
+```
+
+You should see: `All migrations have been run!`
+
+### More troubleshooting
+
+For additional troubleshooting options including debug mode, trusted proxy configuration, and artisan commands, see the [Configuration Troubleshooting](./configuration/application#troubleshooting) section.
+
+See also [Docker Networking](../user-guide/database-servers#docker-networking) if you're having issues connecting to your database server.
+
+---
+
+## Docker
+
+
+This guide will help you deploy Datacask using Docker. This is the simplest deployment method, using a single container that includes everything you need.
+
+## Prerequisites
+
+- [Docker](https://docs.docker.com/engine/install/) installed on your system
+- A [supported application database](intro#supported-application-database-versions) (SQLite, MySQL, MariaDB, or PostgreSQL)
+
+## Quick Start (SQLite)
+
+### 1. Create Project Directory
+
+```bash
+mkdir datacask && cd datacask
+```
+
+### 2. Generate Application Key
+
+```bash
+APP_KEY=$(docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show)
+```
+
+### 3. Create Environment File
+
+Create a `.env` file with your configuration:
+
+```bash title=".env"
+APP_URL=http://localhost:2226
+APP_KEY=base64:your-generated-key-here
+
+# Database (SQLite)
+DB_CONNECTION=sqlite
+DB_DATABASE=/data/database.sqlite
+
+# Enable the background queue worker inside the container
+ENABLE_QUEUE_WORKER=true
+```
+
+### 4. Run the Container
+
+```bash
+docker run -d \
+  --name datacask \
+  -p 2226:2226 \
+  --env-file .env \
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+```
+
+:::note
+The `ENABLE_QUEUE_WORKER=true` environment variable enables the background queue worker inside the container. This is required for processing backup and restore jobs. When using Docker Compose, the worker runs as a separate service instead.
+:::
+
+Access the application at http://localhost:2226
+
+:::tip Pin a version
+See [Versioning](versioning) for available tags.
+:::
+
+## Custom User ID (PUID/PGID)
+
+By default, the application runs as PUID/PGID `1000`. You can customize this by adding `PUID` and `PGID` to your `.env` file:
+
+```bash title=".env"
+PUID=1001
+PGID=1001
+```
+
+:::tip
+Find your user's PUID/PGID with `id username`. The container will automatically set the correct permissions on `/data` for the specified PUID/PGID.
+:::
+
+### Rootless Containers
+
+For rootless Docker or Podman environments, use the `--user` flag. When using this method, the container runs entirely as the specified user and skips the automatic permission fix:
+
+```bash
+# Create the data directory and set permissions first
+mkdir /path/to/databasement/data
+sudo chown 499:499 /path/to/databasement/data
+
+docker run -d \
+...
+  --user 499:499 \
+...
+```
+
+:::note
+When using `--user`, you must manually set `/data` directory volume permissions before starting the container since the automatic permission fix requires root: `sudo chown 499:499 /path/to/databasement/data`
+:::
+
+## Updating
+
+Pull the new image and recreate the container. Migrations run automatically on startup.
+
+```bash
+docker pull registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+docker stop databasement && docker rm databasement
+docker run -d \
+  --name datacask \
+  -p 2226:2226 \
+  --env-file .env \
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+```
+
+See [Versioning](versioning) for available versions.
+
+## Troubleshooting
+
+If you encounter issues, see the [Docker Compose Troubleshooting](./docker-compose#troubleshooting) section for common problems and solutions.
+
+For additional troubleshooting options including debug mode and configuration issues, see the [Configuration Troubleshooting](./configuration/application#troubleshooting) section.
+
+See also [Docker Networking](../user-guide/database-servers#docker-networking) if you're having issues connecting to your database server.
+
+---
+
+## Kubernetes + Helm
+
+
+This guide will help you deploy Datacask on Kubernetes using Helm.
+
+## Installation
+
+### 1. Add the Helm Repository
+
+```bash
+helm repo add datacask https://hjdyzy.github.io/datacask
+helm repo update
+```
+
+### 2. Generate an Application Key
+
+Before deploying, generate an application encryption key:
+
+```bash
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
+```
+
+Copy the output (e.g., `base64:abc123...`) for use in your values file.
+
+### 3. Create a Values File
+
+#### Minimal Configuration (SQLite)
+
+For simple deployments using SQLite:
+
+```yaml title="values.yaml"
+app:
+  url: https://backup.yourdomain.com
+  appKey:
+    value: "base64:your-generated-key-here"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: backup.yourdomain.com
+  # For HTTPS using cert-manager:
+  # tlsSecretName: databasement-tls
+  # annotations:
+  #   cert-manager.io/cluster-issuer: letsencrypt-prod
+```
+
+#### Production Configuration (External Database)
+
+For production, we recommend using MySQL or PostgreSQL instead of SQLite (see [supported versions](intro#supported-application-database-versions)):
+
+```yaml title="values.yaml"
+# ... other app config
+
+database:
+  connection: mysql  # or pgsql
+  host: your-mysql-host.example.com
+  port: 3306
+  name: databasement
+  username: databasement
+  password:
+    value: "your-secure-password"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: backup.yourdomain.com
+```
+
+#### Using Existing Secrets
+
+For sensitive values, you can reference existing Kubernetes secrets instead of storing them in your values file:
+
+```yaml title="values.yaml"
+app:
+  appKey:
+    fromSecret:
+      secretName: "my-app-secret"
+      secretKey: "APP_KEY"
+
+database:
+  connection: mysql
+  host: mysql.example.com
+  name: databasement
+  username: databasement
+  password:
+    fromSecret:
+      secretName: "my-db-secret"
+      secretKey: "password"
+```
+
+### 4. Install the Chart
+
+```bash
+helm upgrade --install datacask datacask/databasement -f values.yaml
+```
+
+See [Versioning](versioning) for available chart versions. The chart version matches the application version.
+
+## Configuration
+
+For the full list of configurable parameters, see the [values.yaml](https://github.com/hjdyzy/datacask/blob/main/helm/databasement/values.yaml) file.
+
+For all available environment variables, see the [Configuration](./configuration) page.
+
+### Custom Environment Variables
+
+Use `extraEnv` to pass additional environment variables:
+
+```yaml
+extraEnv:
+  AWS_ACCESS_KEY_ID: "your-access-key"
+  AWS_SECRET_ACCESS_KEY: "your-secret-key"
+  AWS_DEFAULT_REGION: "us-east-1"
+```
+
+:::tip S3 Storage
+To store backups in AWS S3 or S3-compatible storage (MinIO, DigitalOcean Spaces, etc.), see the [S3 Storage Configuration](./configuration/backup#s3-storage) section for all available options.
+:::
+
+### Environment Variables from Secrets/ConfigMaps
+
+Use `extraEnvFrom` to load environment variables from existing secrets or configmaps:
+
+```yaml
+extraEnvFrom:
+  - secretRef:
+      name: aws-credentials
+  - configMapRef:
+      name: app-config
+```
+
+This is useful for injecting credentials managed by external secret management tools (e.g., External Secrets Operator, Sealed Secrets).
+
+### Persistence
+
+By default, persistence is enabled with a 10Gi volume:
+
+```yaml
+persistence:
+  enabled: true
+  storageClass: ""  # Uses default storage class
+  size: 10Gi
+  accessModes:
+    - ReadWriteOnce
+```
+
+### Worker Configuration
+
+The queue worker runs as a sidecar container by default. You can customize its behavior:
+
+```yaml
+worker:
+  enabled: true
+  command: "php artisan queue:work --queue=backups,default --tries=3 --timeout=3600"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+```
+
+For high-availability setups with an external database, you can run the worker as a separate deployment:
+
+```yaml
+worker:
+  separateDeployment: true
+  replicaCount: 2
+```
+
+:::note
+Separate worker deployment requires either ReadWriteMany storage or AWS S3 storage + an external database (MySQL/PostgreSQL).
+:::
+
+## Updating
+
+Update the `--version` flag and run the same install command. Migrations run automatically on startup.
+
+```bash
+helm repo update
+helm upgrade --install datacask datacask/databasement --version 1.0.1 -f values.yaml
+```
+
+See [Versioning](versioning) for available versions.
+
+## Troubleshooting
+
+For additional troubleshooting options including debug mode and configuration issues, see the [Configuration Troubleshooting](./configuration/application#troubleshooting) section.
+
+---
+
+## Native Ubuntu Installation
+
+
+This guide will help you install Datacask directly on Ubuntu without Docker. This is useful for environments where Docker is not available or when you prefer a traditional installation.
+
+## Prerequisites
+
+- Ubuntu 22.04 LTS or 24.04 LTS
+- Root or sudo access
+- A web server (Nginx or Apache)
+- A [supported application database](intro#supported-application-database-versions) (SQLite, MySQL, MariaDB, or PostgreSQL)
+
+## Install PHP 8.4
+
+```bash
+# Add PHP repository
+sudo add-apt-repository ppa:ondrej/php -y
+sudo apt update
+
+# Install PHP 8.4 and required extensions
+sudo apt install -y \
+    php8.4 \
+    php8.4-fpm \
+    php8.4-cli \
+    php8.4-common \
+    php8.4-curl \
+    php8.4-mbstring \
+    php8.4-xml \
+    php8.4-zip \
+    php8.4-pdo \
+    php8.4-mysql \
+    php8.4-pgsql \
+    php8.4-sqlite3 \
+    php8.4-intl \
+    php8.4-pcntl \
+    php8.4-opcache
+```
+
+## Install Database CLI Tools
+
+Datacask requires database CLI tools to perform backup and restore operations.
+
+### For MySQL/MariaDB backups
+
+```bash
+# Install MariaDB client (includes mariadb-dump and mariadb commands)
+sudo apt install -y mariadb-client
+```
+
+:::note
+Datacask uses the MariaDB CLI tools (`mariadb-dump`, `mariadb`) to back up and restore both MariaDB and MySQL servers.
+:::
+
+### For PostgreSQL backups
+
+```bash
+# Install PostgreSQL client (includes pg_dump and psql commands)
+sudo apt install -y postgresql-client
+```
+
+### For SQLite backups
+
+SQLite support is built into PHP - no additional tools needed.
+
+## Install Composer
+
+```bash
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+```
+
+## Install Node.js
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+## Install Nginx
+
+```bash
+sudo apt install -y nginx
+```
+
+## Download and Configure Datacask
+
+```bash
+# Clone the repository
+cd /var/www/datacask
+git clone https://github.com/hjdyzy/datacask.git .
+
+# Install PHP dependencies
+composer install --no-dev --optimize-autoloader
+
+# Install Node dependencies and build assets
+npm install
+npm run build
+
+# Publish Livewire assets
+php artisan vendor:publish --force --tag=livewire:assets
+```
+
+## Configure Environment
+
+```bash
+# Generate application key
+php artisan key:generate
+```
+
+Edit the `.env` file with your configuration:
+
+```bash
+nano .env
+```
+
+Essential settings:
+
+```bash
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://your-domain.com
+
+# Database for Datacask (choose one)
+# SQLite (simplest)
+DB_CONNECTION=sqlite
+DB_DATABASE=/var/www/datacask/database/database.sqlite
+
+# Or MySQL
+# DB_CONNECTION=mysql
+# DB_HOST=127.0.0.1
+# DB_PORT=3306
+# DB_DATABASE=databasement
+# DB_USERNAME=databasement
+# DB_PASSWORD=your-password
+
+# Or PostgreSQL
+# DB_CONNECTION=pgsql
+# DB_HOST=127.0.0.1
+# DB_PORT=5432
+# DB_DATABASE=databasement
+# DB_USERNAME=databasement
+# DB_PASSWORD=your-password
+
+# Backup working directory
+BACKUP_WORKING_DIRECTORY=/tmp/backups
+```
+
+For all available environment variables, see the [Configuration](./configuration) page.
+
+:::tip S3 Storage
+To store backups in AWS S3 or S3-compatible storage (MinIO, DigitalOcean Spaces, etc.), see the [S3 Storage Configuration](./configuration/backup#s3-storage) section.
+:::
+
+## Run Database Migrations
+
+```bash
+# Run migrations
+cd /var/www/datacask
+php artisan migrate --force
+```
+
+## Configure Nginx
+
+Create a new Nginx configuration:
+
+```bash
+sudo nano /etc/nginx/sites-available/databasement
+```
+
+Add the following configuration:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /var/www/datacask/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    index index.php;
+
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.4-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
+
+Enable the site:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/databasement /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+## Configure Queue Worker (Systemd)
+
+The queue worker is **required** to process backup and restore jobs.
+
+Create a systemd service:
+
+```bash
+sudo nano /etc/systemd/system/databasement-queue.service
+```
+
+Add the following:
+
+```ini
+[Unit]
+Description=Datacask Queue Worker
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/datacask
+ExecStart=/usr/bin/php artisan queue:work --queue=backups,default --tries=3 --timeout=3600 --sleep=3 --max-jobs=1000
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable databasement-queue
+sudo systemctl start databasement-queue
+```
+
+Check status:
+
+```bash
+sudo systemctl status databasement-queue
+```
+
+## Configure Scheduler (Cron)
+
+The scheduler runs automated backups based on your configured schedules.
+
+```bash
+crontab -e
+```
+
+Add this line:
+
+```cron
+* * * * * cd /var/www/datacask && php artisan schedule:run >> /dev/null 2>&1
+```
+
+## Verification
+
+1. Open your browser and navigate to your domain
+2. Create your first user account
+3. Add a database server and test the connection
+4. Create a backup to verify everything works
+
+## Troubleshooting
+
+- Check Queue Worker Logs
+
+```bash
+sudo journalctl -u databasement-queue -f
+```
+
+- Check PHP-FPM Logs
+- Check Nginx Logs
+
+### Test Database CLI Tools
+
+```bash
+# Test MariaDB/MySQL client
+mariadb --version
+# or: mysql --version
+
+# Test PostgreSQL client
+psql --version
+
+# Test pg_dump
+pg_dump --version
+```
+
+### Run Artisan Commands
+
+```bash
+php artisan migrate:status
+php artisan config:show database
+```
+
+### More troubleshooting
+
+For additional troubleshooting options including debug mode and trusted proxy configuration, see the [Configuration Troubleshooting](./configuration/application#troubleshooting) section.
+
+## Updating Datacask
+
+Check the [GitHub Releases](https://github.com/hjdyzy/datacask/releases) page for available versions, then update to a specific release:
+
+```bash
+cd /var/www/datacask
+
+# Fetch tags and checkout the desired version
+git fetch --tags
+git checkout v1.0.1
+
+# Install dependencies
+composer install --no-dev --optimize-autoloader
+npm install
+npm run build
+
+# Run migrations
+php artisan migrate --force
+
+# Clear caches
+php artisan optimize:clear
+
+# Restart queue worker
+sudo systemctl restart databasement-queue
+```
+
+---
+
+## Application
+
+
+Core application settings including database, timezone, proxy configuration, and logging.
+
+## Application Settings
+
+| Variable                | Description                                      | Default                 |
+| ----------------------- | ------------------------------------------------ | ----------------------- |
+| `APP_KEY`               | Application encryption key (required)            | -                       |
+| `APP_URL`               | Full URL where the app is accessible             | `http://localhost:2226` |
+| `APP_DEBUG`             | Enable debug mode (set to `false` in production) | `false`                 |
+| `APP_DISPLAY_TIMEZONE`  | Timezone for UI, backup filenames, and crons     | `UTC`                   |
+| `API_RATE_LIMIT`        | Max API requests per minute, per token           | `300`                   |
+
+### API Rate Limit
+
+Requests to the standard `/api/v1/*` endpoints (not the agent daemon endpoints, see below) are capped at `API_RATE_LIMIT` per minute. The budget is keyed by API token where one is present, falling back to the authenticated user and then the client IP for the rare request that carries neither. Exceeding it returns `429 Too Many Requests`.
+
+This only covers the API. The web UI is unaffected: Livewire requests, including auto-refreshing pages, go through the `web` routes and are never counted against this limit.
+
+```bash
+API_RATE_LIMIT=600
+```
+
+Set it to `0` to turn throttling off, for instance when a reverse proxy or API gateway in front of Datacask already enforces its own limits.
+
+Agent daemon endpoints (`/api/v1/agent/*`) are excluded from `API_RATE_LIMIT` entirely: agents poll on a fixed interval and have their own protection against repeated authentication failures.
+
+### Generating the Application Key
+
+The `APP_KEY` is required for encryption. Generate one with:
+
+```bash
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
+```
+
+Copy the output (e.g., `base64:xxxx...`) and set it as `APP_KEY`.
+
+### Timezone Configuration
+
+Set `APP_DISPLAY_TIMEZONE` to display dates, backup filenames, and schedule times in your local timezone. A cron like `0 2 * * *` will then fire at 02:00 in that zone.
+
+```bash
+APP_DISPLAY_TIMEZONE=Europe/London
+```
+
+See the [list of supported timezones](https://www.php.net/manual/en/timezones.php).
+
+Data is always stored in UTC internally. If you previously set `TZ`, it is migrated automatically — no action needed.
+
+## Database Configuration
+
+Datacask needs a database to store its own data (users, servers, backup configurations).
+
+### SQLite (Simplest)
+
+```bash
+DB_CONNECTION=sqlite
+DB_DATABASE=/data/database.sqlite
+```
+
+:::note
+When using SQLite, make sure to mount a volume for `/data` to persist data.
+:::
+
+### MySQL / MariaDB
+
+Create a database and user for Datacask on your MySQL server:
+
+**MySQL:**
+```sql
+CREATE DATABASE databasement CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'databasement'@'%' IDENTIFIED BY 'your-secure-password';
+GRANT ALL PRIVILEGES ON databasement.* TO 'databasement'@'%';
+FLUSH PRIVILEGES;
+```
+
+```bash
+DB_CONNECTION=mysql
+DB_HOST=your-mysql-host
+DB_PORT=3306
+DB_DATABASE=databasement
+DB_USERNAME=databasement
+DB_PASSWORD=your-secure-password
+```
+
+### PostgreSQL
+
+Create a database and user for Datacask on your PostgreSQL server:
+
+**PostgreSQL:**
+```sql
+CREATE DATABASE databasement;
+CREATE USER databasement WITH ENCRYPTED PASSWORD 'your-secure-password';
+GRANT ALL PRIVILEGES ON DATABASE databasement TO databasement;
+```
+
+```bash
+DB_CONNECTION=pgsql
+DB_HOST=your-postgres-host
+DB_PORT=5432
+DB_DATABASE=databasement
+DB_USERNAME=databasement
+DB_PASSWORD=your-secure-password
+```
+
+## Reverse Proxy / Trusted Proxies
+
+When running behind a reverse proxy (nginx, Traefik, Kubernetes Ingress), configure trusted proxies so Laravel can
+correctly determine the client IP and protocol. See the [Troubleshooting section](#troubleshooting) if you have issues
+with proxy configuration.
+
+| Variable          | Description                                    | Default                                                                            |
+| ----------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `TRUSTED_PROXIES` | IP addresses or CIDR ranges of trusted proxies | `127.0.0.0/8,10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.168.0.0/16` |
+
+**Alternative values:**
+- `*` - Trust all proxies (simplest option for containerized environments)
+- Comma-separated IPs/CIDRs: `10.0.0.1,192.168.1.0/24` - Trust specific proxies only
+- Empty - Trust no proxies
+
+:::info
+Checks the [Troubleshooting section](#troubleshooting) for help with proxy configuration.
+:::
+
+## Logging
+
+| Variable      | Description       | Default  |
+| ------------- | ----------------- | -------- |
+| `LOG_CHANNEL` | Logging channel   | `stderr` |
+| `LOG_LEVEL`   | Minimum log level | `debug`  |
+
+For production, `stderr` is recommended as logs will be captured by Docker.
+
+## Complete Example
+
+Here's a complete `.env` file for a production deployment with MySQL:
+
+```bash
+# Application
+APP_DEBUG=false
+APP_URL=https://backup.yourdomain.com
+APP_KEY=base64:your-generated-key-here
+# APP_DISPLAY_TIMEZONE=UTC  # timezone for UI, backup filenames, and schedules
+
+# Database (for Datacask itself)
+DB_CONNECTION=mysql
+DB_HOST=mysql.yourdomain.com
+DB_PORT=3306
+DB_DATABASE=databasement
+DB_USERNAME=databasement
+DB_PASSWORD=secure-password-here
+
+# Logging
+LOG_CHANNEL=stderr
+LOG_LEVEL=warning
+```
+
+## Troubleshooting
+
+### Enable Debug Mode
+
+Enable debug mode to access detailed diagnostics:
+
+```bash
+APP_DEBUG=true
+```
+
+Then visit `https://your-domain.com/health/debug` to view:
+- Current IP address and whether it's from a trusted proxy
+- Request headers (including `X-Forwarded-For`, `X-Forwarded-Proto`)
+- Application configuration
+
+### Debugging Trusted Proxies
+
+If your application shows HTTP instead of HTTPS, or shows the wrong client IP:
+
+1. **Enable debug mode** (see above)
+2. **Visit `/health/debug`** and check:
+   - `is_trusted_proxy`: Should be `true`
+   - `secure`: Should be `true` for HTTPS
+   - `headers`: Check `x-forwarded-for` and `x-forwarded-proto`
+
+3. **Common issues:**
+   - `is_trusted_proxy: false` → The proxy IP is not in your `TRUSTED_PROXIES` list
+   - `secure: false` with HTTPS → Trusted proxy not configured, so `x-forwarded-proto` header is ignored
+
+4. **Quick fix:** Set `TRUSTED_PROXIES=*` to trust all proxies
+
+### More troubleshooting
+
+If you encounter issues, see the [Docker Compose Troubleshooting](../docker-compose#troubleshooting) section for common problems and solutions.
+
+See also [Docker Networking](../../user-guide/database-servers#docker-networking) if you're having issues connecting to your database server.
+
+### Run Artisan Commands
+
+```bash
+php artisan migrate:status # Check database migrations
+php artisan config:show database # View database configuration
+```
+
+### Reset a User Password
+
+If you lose access to an account and email delivery is not configured (so the **Forgot password?** link cannot send a reset email), reset the password directly from the container. Run this from the directory that holds your `docker-compose.yml`:
+
+```bash
+docker compose exec app php artisan user:reset-password you@example.com
+```
+
+The command prompts for the new password (hidden input) and validates it against the app's password rules. Omit the email to be prompted for it as well.
+
+### Get Help
+
+- Check the logs: `docker compose logs app`
+- Report issues on [GitHub](https://github.com/hjdyzy/datacask/issues)
+
+---
+
+## Backup
+
+
+Backup settings (compression, schedules, timeouts, etc.) can be configured directly from the **Configuration** page in the web UI.
+
+This page covers additional setup that requires environment variables.
+
+## Encrypted Backups
+
+When using `encrypted` compression, backups are encrypted with AES-256 using 7-Zip. The encryption key defaults to `APP_KEY`, but you can set a dedicated key:
+
+```bash
+BACKUP_ENCRYPTION_KEY=base64:your-32-byte-key-here
+```
+
+You can generate a key with:
+
+```bash
+echo "base64:$(openssl rand -base64 32)"
+```
+
+:::warning
+If you change the encryption key, you will not be able to restore backups that were encrypted with the previous key. Keep your encryption key safe and backed up separately.
+:::
+
+## Hook Scripts
+
+Run a shell script after **every successful backup** and after **every successful restore**. Configure both from **Configuration → Backup → Hook Scripts** in the web UI — that screen also lists every variable available to each script.
+
+Typical uses: send a custom notification, trigger an off-site sync, ping a healthcheck endpoint, or invalidate a cache.
+
+- Each script is implicitly prefixed with `#!/bin/sh` and run after the operation has already succeeded.
+- Context is passed as environment variables (e.g. `$BACKUP_DATABASE_NAME`, `$BACKUP_FILENAME`, `$RESTORE_DATABASE_NAME`) — see the full list next to each script in the UI.
+- **stdout/stderr stream into the job log**, so you can inspect output from the snapshot/restore detail view.
+- A non-zero exit code is logged as a **warning** but does **not** fail the backup or restore.
+
+The post-backup script runs wherever the backup runs — the server/queue worker, or the **agent** in [agent mode](../intro) (the script is sent inside the job's work order). Restores are never delegated to agents, so the post-restore script only runs on the server/queue worker.
+
+:::warning
+Scripts run with the same privileges as the worker process and can only be edited by administrators. Treat them like any other server-side automation.
+:::
+
+### Available binaries
+
+Commands must exist on the host that runs the script. The **official Docker image** is Alpine-based and ships:
+
+| Purpose | Commands |
+| --- | --- |
+| Shell | `sh` (default), `bash` |
+| HTTP / network | `curl`, `wget` (BusyBox), `ssh`, `scp`, `sshpass` |
+| Archives | `gzip`, `zstd`, `7z`, `unzip` |
+| Database clients | `mysql` / `mariadb`, `mysqldump`, `psql`, `pg_dump`, `pg_restore`, `redis-cli`, `sqlite3`, `mongodump`, `mongorestore`, `gbak`, `isql` |
+| Core utilities | `date`, `grep`, `sed`, `awk`, `find`, `cat`, `head`, `tail`, `cut`, `tr`, `wc`, `ps`, `git` |
+
+:::note
+`jq`, `python`, `aws`, and `rclone` are **not** in the official image — install them into a custom image (or your native/agent host) first.
+:::
+
+### Examples
+
+Notify a webhook with the backup details:
+
+```sh
+# Post-backup
+curl -fsS -X POST https://example.com/hooks/backup \
+  -d "database=$BACKUP_DATABASE_NAME" \
+  -d "file=$BACKUP_FILENAME" \
+  -d "size=$BACKUP_FILE_SIZE"
+```
+
+Run different logic for a specific server, based on its ID:
+
+```sh
+# Post-backup: only ping the prod healthcheck for one server
+if [ "$BACKUP_SERVER_ID" = "01JCABCDEF0123456789ABCDEF" ]; then
+  echo "Production backup done, pinging healthcheck"
+  curl -fsS "https://hc-ping.com/your-uuid"
+else
+  echo "Skipping healthcheck for server $BACKUP_SERVER_NAME ($BACKUP_SERVER_ID)"
+fi
+```
+
+Debug the available environment variables:
+
+```sh
+echo "=== post-backup hook ==="
+echo "Server ID    : $BACKUP_SERVER_ID"
+echo "Server name  : $BACKUP_SERVER_NAME"
+echo "Database     : $BACKUP_DATABASE_NAME"
+echo "DB type      : $BACKUP_DATABASE_TYPE"
+echo "Filename     : $BACKUP_FILENAME"
+echo "File size    : $BACKUP_FILE_SIZE bytes"
+echo "Checksum     : $BACKUP_CHECKSUM"
+echo "Volume       : $BACKUP_VOLUME_NAME"
+echo "Finished at  : $(date)"
+echo "=== done ==="
+```
+
+Post-restore notification:
+
+```sh
+# Post-restore
+curl -fsS -X POST https://example.com/hooks/restore \
+  -d "server=$RESTORE_SERVER_NAME" \
+  -d "target=$RESTORE_DATABASE_NAME" \
+  -d "source=$RESTORE_SOURCE_DATABASE"
+```
+
+:::tip
+You can find a server's ID in its detail page.
+:::
+
+## S3 Storage
+
+Datacask supports AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces, etc.) for backup volumes.
+
+All S3 settings (region, credentials, endpoints) are configured **per-volume** in the web UI when creating or editing an S3 volume. See the [Volumes user guide](../../user-guide/volumes#s3-storage) for field descriptions.
+
+### S3 IAM Permissions
+
+The AWS credentials used by each S3 volume need these permissions:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::your-bucket-name",
+                "arn:aws:s3:::your-bucket-name/*"
+            ]
+        }
+    ]
+}
+```
+
+### Credentials
+
+You can provide explicit **Access Key ID** and **Secret Access Key** in the volume form. However, credentials are optional — when left blank, the AWS SDK uses its [default credential chain](https://docs.aws.amazon.com/sdk-for-php/v3/developer-guide/guide_credentials.html):
+
+- Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
+- EC2/ECS instance roles
+- EKS IRSA (IAM Roles for Service Accounts)
+
+This means deployments on AWS infrastructure can work without storing any credentials in the database.
+
+### S3-Compatible Storage (MinIO, etc.)
+
+For S3-compatible providers, set the **Custom Endpoint** and enable **Use Path-Style Endpoint** in the Advanced S3 Settings section of the volume form.
+
+:::tip
+If your internal endpoint differs from the public URL (e.g., `http://minio:9000` vs `http://localhost:9000`), set the **Public Endpoint** field so presigned download URLs work correctly in your browser.
+:::
+
+### Migration from Environment Variables
+
+If you previously configured S3 via environment variables (`AWS_ACCESS_KEY_ID`, `AWS_REGION`, etc.), the migration automatically copies those values into each existing S3 volume's config. After upgrading, you can remove the AWS environment variables from your `.env` file.
+
+---
+
+## Notification
+
+
+Notification settings (enable/disable, channels, recipients) can be configured directly from the **Configuration** page in the web UI.
+
+This page covers additional setup guides for each channel.
+
+## Email {#email}
+
+Datacask uses Laravel's mail system (Symfony Mailer). Configure your mail driver with these environment variables:
+
+---
+
+### Basic SMTP configuration (STARTTLS – typical 587)
+
+```bash
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.example.com
+MAIL_PORT=587
+MAIL_SCHEME=smtp
+MAIL_USERNAME=your-username
+MAIL_PASSWORD=your-password
+MAIL_FROM_ADDRESS=databasement@example.com
+MAIL_FROM_NAME="Datacask"
+```
+
+`smtp` uses plain SMTP and automatically negotiates STARTTLS if the server supports it (commonly port 587).
+
+---
+
+### SMTPS (implicit TLS – typical 465)
+
+```bash
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.example.com
+MAIL_PORT=465
+MAIL_SCHEME=smtps
+MAIL_USERNAME=your-username
+MAIL_PASSWORD=your-password
+MAIL_FROM_ADDRESS=databasement@example.com
+MAIL_FROM_NAME="Datacask"
+```
+
+`smtps` enables implicit TLS from the beginning of the connection.
+
+---
+
+### Unencrypted SMTP / no forced encryption (port 25)
+
+```bash
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.example.com
+MAIL_PORT=25
+MAIL_SCHEME=smtp
+```
+
+If the server advertises `STARTTLS`, Symfony will attempt to use it automatically.
+
+If you **must explicitly disable STARTTLS**, use a DSN:
+
+```bash
+MAIL_MAILER=smtp
+MAIL_URL=smtp://smtp.example.com:25?auto_tls=false
+```
+
+---
+
+### Using a DSN (advanced configuration)
+
+You may configure the full connection using `MAIL_URL`:
+
+```bash
+MAIL_MAILER=smtp
+MAIL_URL=smtp://user:pass@smtp.example.com:587
+```
+
+Or with implicit TLS:
+
+```bash
+MAIL_MAILER=smtp
+MAIL_URL=smtps://user:pass@smtp.example.com:465
+```
+
+> **Note:** If your username or password contains special URI characters (e.g. `@`, `:`, `+`, `#`), percent-encode them in the DSN (e.g. `@` → `%40`).
+
+When `MAIL_URL` is defined, it overrides `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, and `MAIL_SCHEME`.
+
+---
+
+### Removed option
+
+`MAIL_ENCRYPTION` is no longer used.
+
+Encryption behavior is controlled exclusively by the DSN scheme (`smtp` or `smtps`) and optional DSN parameters.
+
+## Slack {#slack}
+
+To receive failure notifications in Slack, you need to create an Incoming Webhook:
+
+1. Go to [Slack API Apps](https://api.slack.com/apps)
+2. Click **Create New App** > **From scratch**
+3. Name your app (e.g., "Datacask") and select your workspace
+4. Go to **Incoming Webhooks** and toggle it on
+5. Click **Add New Webhook to Workspace**
+6. Select the channel where you want notifications
+7. Copy the webhook URL and paste it in the Configuration page
+
+## Discord Webhook {#discord-webhook}
+
+The simplest way to receive failure notifications in Discord — no bot required.
+
+1. Open **Server Settings** > **Integrations** > **Webhooks**
+2. Click **New Webhook**
+3. Choose the channel where you want notifications
+4. Click **Copy Webhook URL**
+
+Paste the **Webhook URL** on the Configuration page (select the **Discord (Webhook)** channel).
+
+> **Tip:** If you just need notifications in a single channel, Discord Webhook is easier to set up than the bot-based integration below.
+
+## Discord Bot {#discord}
+
+To receive failure notifications in Discord via a bot, you need a bot token and a channel ID. This gives more flexibility (e.g., sending to multiple channels) but requires more setup.
+
+### Creating a Discord Bot
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application** and give it a name (e.g., "Datacask")
+3. Go to **Bot** in the sidebar and click **Add Bot**
+4. Under **Token**, click **Copy** to get your bot token
+5. Go to **OAuth2** > **URL Generator**
+6. Select scopes: `bot`
+7. Select bot permissions: `Send Messages`, `Embed Links`
+8. Copy the generated URL and open it to invite the bot to your server
+
+### Getting a Channel ID
+
+1. Open Discord and go to **User Settings** > **Advanced**
+2. Enable **Developer Mode**
+3. Right-click the channel where you want notifications
+4. Click **Copy Channel ID**
+
+Enter both the **Bot Token** and **Channel ID** on the Configuration page (select the **Discord (Bot)** channel).
+
+## Telegram {#telegram}
+
+To receive failure notifications via Telegram, you need a bot token and a chat ID.
+
+### Creating a Telegram Bot
+
+1. Open Telegram and search for **@BotFather**
+2. Send `/newbot` and follow the prompts to name your bot
+3. BotFather will give you a **Bot Token** — copy it
+
+### Getting a Chat ID
+
+1. Add your bot to the group or start a direct chat with it
+2. Send a message to the bot
+3. Open `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates` in a browser
+4. Find the `chat.id` value in the JSON response
+
+Enter both the **Bot Token** and **Chat ID** on the Configuration page.
+
+### Sending to a Topic (optional)
+
+For forum-style groups that have **Topics** enabled, you can route notifications to a specific topic by setting the optional **Topic ID** field.
+
+1. Open the target topic in Telegram and post a message in it
+2. Open `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates` in a browser
+3. Find the `message_thread_id` value in the JSON response
+4. Enter it as the **Topic ID** on the Configuration page
+
+Leave **Topic ID** empty to send to the group's default (General) topic.
+
+## Pushover {#pushover}
+
+[Pushover](https://pushover.net/) delivers push notifications to your phone and desktop.
+
+1. Create an account at [pushover.net](https://pushover.net/)
+2. Copy your **User Key** from the dashboard
+3. Go to **Create an Application/API Token**
+4. Name it (e.g., "Datacask") and copy the **App Token**
+
+Enter both the **App Token** and **User Key** on the Configuration page.
+
+## Gotify {#gotify}
+
+[Gotify](https://gotify.net/) is a self-hosted push notification server.
+
+1. Log in to your Gotify server
+2. Go to **Apps** and create a new application (e.g., "Datacask")
+3. Copy the **App Token**
+
+Enter your **Gotify Server URL** (e.g., `https://gotify.example.com`) and the **App Token** on the Configuration page.
+
+## WeCom Bot {#wecom}
+
+Use a WeCom group robot to deliver backup and restore notifications to an Enterprise WeChat group:
+
+1. Open the target group in Enterprise WeChat.
+2. Open **Group Settings**, choose **Group Robots**, and add a robot.
+3. Copy the complete webhook URL generated for the robot.
+4. In Datacask, open **Configuration > Notification**, add a **WeCom Bot** channel, and paste the URL.
+5. Use the paper-airplane action beside the channel to send a test notification.
+
+The webhook URL contains the robot key and is stored encrypted. Treat it as a credential and do not share it in logs or documentation. Datacask checks both the HTTP status and WeCom's response error code, so a rejected message is reported by the test action.
+
+## Webhook {#webhook}
+
+Send failure notifications as JSON payloads to any HTTP endpoint.
+
+Enter your **Webhook URL** on the Configuration page. Optionally, provide a **Webhook Secret** to authenticate requests via the `X-Webhook-Token` header.
+
+### Request Format
+
+Notifications are sent as `POST` requests with a JSON body:
+
+```json
+{
+  "event": "BackupFailedNotification",
+  "title": "Backup Failed: Production DB",
+  "body": "A backup job has failed.",
+  "fields": {
+    "Server": "Production DB",
+    "Database": "myapp"
+  },
+  "error": "Connection refused",
+  "action_url": "https://your-instance.com/backup-jobs/...",
+  "timestamp": "2025-01-15T02:00:00+00:00"
+}
+```
+
+### Headers
+
+| Header | Description |
+|--------|-------------|
+| `Content-Type` | `application/json` |
+| `X-Webhook-Token` | The configured secret (only if a secret is configured) |
+
+### Tip: Using with Apprise
+
+The webhook channel can be pointed at an [Apprise](https://github.com/caronc/apprise) API endpoint to relay notifications to 100+ services (Ntfy, Matrix, Mattermost, etc.). Set the Apprise stateless endpoint (e.g., `https://apprise.example.com/notify/`) as your Webhook URL.
+
+## What Gets Notified
+
+Each database server controls which events are sent: **all events**, **success only**, **failure only**, or **none**. The default is **failure only**.
+
+- **Backup failures**: When a scheduled or manual backup fails
+- **Backup successes**: When a scheduled or manual backup succeeds and success notifications are enabled
+- **Restore failures**: When a restore operation fails
+- **Restore successes**: When a restore succeeds and success notifications are enabled
+- **Missing snapshots**: When snapshot file verification detects missing backup files on storage volumes
+- **Storage limit warnings**: When a volume exceeds its configured limit in notify-only mode
+
+## Notification Content
+
+Each notification includes:
+
+- Server name
+- Database name
+- Error message
+- Timestamp
+- Direct link to the failed job details
+
+---
+
+## SSO
+
+
+Datacask supports OAuth authentication, allowing users to log in using external identity providers. This can be used alongside or instead of traditional password authentication.
+
+## Supported Providers
+
+- **Google** - Google Workspace and personal accounts
+- **GitHub** - GitHub accounts
+- **GitLab** - GitLab.com or self-hosted GitLab
+- **Generic OIDC** - Any OpenID Connect provider (Keycloak, Authentik, Dex, Okta, etc.)
+
+:::tip Need another provider?
+Laravel Socialite supports [many more providers](https://socialiteproviders.com/) including Facebook, Microsoft, Apple, Slack, and 100+ others. Feel free to submit a PR to add support for additional providers.
+:::
+
+## Configuration
+
+OAuth is configured via environment variables. Each provider can be enabled independently.
+
+### Google
+
+1. Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Set authorized redirect URI to: `https://your-domain.com/oauth/google/callback`
+3. Configure environment variables:
+
+```env
+OAUTH_GOOGLE_ENABLED=true
+OAUTH_GOOGLE_CLIENT_ID=your-client-id
+OAUTH_GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+### GitHub
+
+1. Create an OAuth App in [GitHub Developer Settings](https://github.com/settings/developers)
+2. Set authorization callback URL to: `https://your-domain.com/oauth/github/callback`
+3. Configure environment variables:
+
+```env
+OAUTH_GITHUB_ENABLED=true
+OAUTH_GITHUB_CLIENT_ID=your-client-id
+OAUTH_GITHUB_CLIENT_SECRET=your-client-secret
+```
+
+### GitLab
+
+1. Create an OAuth application in GitLab (Admin Area > Applications or User Settings > Applications)
+2. Set redirect URI to: `https://your-domain.com/oauth/gitlab/callback`
+3. Configure environment variables:
+
+```env
+OAUTH_GITLAB_ENABLED=true
+OAUTH_GITLAB_CLIENT_ID=your-application-id
+OAUTH_GITLAB_CLIENT_SECRET=your-secret
+OAUTH_GITLAB_HOST=https://gitlab.com  # Or your self-hosted GitLab URL
+```
+
+### Generic OIDC (Keycloak, Authentik, etc.)
+
+For any OpenID Connect compatible provider:
+
+1. Create a client/application in your identity provider
+2. Set redirect URI to: `https://your-domain.com/oauth/oidc/callback`
+3. Configure environment variables:
+
+```env
+OAUTH_OIDC_ENABLED=true
+OAUTH_OIDC_CLIENT_ID=your-client-id
+OAUTH_OIDC_CLIENT_SECRET=your-client-secret
+OAUTH_OIDC_BASE_URL=https://your-idp.com/realms/your-realm  # The OIDC base URL
+OAUTH_OIDC_LABEL=SSO  # Button label on login page
+```
+
+#### Keycloak Setup
+
+1. In Keycloak Admin Console, go to **Clients** and click **Create client**
+2. Configure the client:
+   - **Client ID**: `databasement` (or your preferred name)
+   - **Client authentication**: **On** (required for confidential clients)
+   - **Authentication flow**: Check **Standard flow** (Authorization Code Flow)
+
+3. In the **Settings** tab, configure the URLs (replace `datacask.example.com` with your domain):
+
+   | Field                           | Value                                                  |
+   | ------------------------------- | ------------------------------------------------------ |
+   | Root URL                        | `https://datacask.example.com`                     |
+   | Home URL                        | `https://datacask.example.com`                     |
+   | Valid redirect URIs             | `https://datacask.example.com/oauth/oidc/callback` |
+   | Valid post logout redirect URIs | `https://datacask.example.com`                     |
+   | Web origins                     | `https://datacask.example.com`                     |
+
+4. Go to the **Credentials** tab and copy the **Client secret**
+
+5. Configure environment variables:
+
+```env
+OAUTH_OIDC_ENABLED=true
+OAUTH_OIDC_CLIENT_ID=databasement
+OAUTH_OIDC_CLIENT_SECRET=your-client-secret
+OAUTH_OIDC_BASE_URL=https://keycloak.example.com/realms/your-realm
+OAUTH_OIDC_LABEL=Keycloak
+```
+
+:::tip Finding the Issuer URL
+The issuer URL follows the pattern `https://your-keycloak-server/realms/your-realm-name`. You can find it in **Realm Settings** > **General** > **Endpoints** > **OpenID Endpoint Configuration**.
+:::
+
+#### Authentik Example
+
+```env
+OAUTH_OIDC_ENABLED=true
+OAUTH_OIDC_CLIENT_ID=databasement
+OAUTH_OIDC_CLIENT_SECRET=your-secret
+OAUTH_OIDC_BASE_URL=https://authentik.example.com/application/o/databasement/
+OAUTH_OIDC_LABEL=Authentik
+```
+
+## OAuth-Only Mode
+
+To enforce OAuth/SSO as the only sign-in method, hide the password login form, and reject password authentication on the server:
+
+```env
+OAUTH_ONLY_MODE=true  # Default: false
+```
+
+When enabled:
+
+- The password fields are hidden on the login page; users only see OAuth provider buttons.
+- Password authentication is rejected even if a request bypasses the UI.
+- The "forgot password" and "reset password" routes return `404`.
+- First-user bootstrap registration (when no users exist yet) still works, so the instance can be initialized before connecting an identity provider.
+
+:::warning
+Make sure at least one OAuth provider is configured and working before enabling `OAUTH_ONLY_MODE` — otherwise no one will be able to sign in.
+:::
+
+## User Creation Settings
+
+### Auto-Create Users
+
+When enabled (default), new users are automatically created when they log in via OAuth for the first time:
+
+```env
+OAUTH_AUTO_CREATE_USERS=true  # Default: true
+```
+
+Set to `false` to only allow existing users to log in via OAuth.
+
+### Default Role
+
+New users created via OAuth are assigned this role:
+
+```env
+OAUTH_DEFAULT_ROLE=member  # Options: viewer, member, admin
+```
+
+### Default Organization
+
+By default, auto-created OAuth users join the default organization. To assign them to a different organization instead, set:
+
+```env
+OAUTH_DEFAULT_ORGANIZATION_ID=01JA2B3C4D5E6F7G8H9J0KMNPQ  # Organization ULID
+```
+
+You can find the organization ID in **Configuration > Organizations**. See the [Organizations guide](../../user-guide/organizations.md) for more details on multi-org setups.
+
+### Auto-Link by Email
+
+When enabled (default), OAuth logins are automatically linked to existing users with matching email addresses:
+
+```env
+OAUTH_AUTO_LINK_BY_EMAIL=true  # Default: true
+```
+
+## OIDC Group-Based Role Mapping
+
+When using a Generic OIDC provider (Keycloak, Authentik, Dex, etc.), you can map IdP groups to Datacask roles automatically. This lets you control who can access Datacask and what role they get — all from your identity provider.
+
+### How It Works
+
+1. Your IdP includes a `groups` claim in the OIDC token (e.g., `["devops", "databasement-admins"]`)
+2. Datacask checks the user's groups against your configured mappings
+3. The user gets the highest-priority matching role: **admin > member > viewer**
+4. Roles are synced on every login, so changes in the IdP take effect immediately
+
+### Configuration
+
+First, make sure your IdP sends groups in the token. Most IdPs require requesting the `groups` scope:
+
+```env
+OAUTH_OIDC_SCOPES=groups
+```
+
+Then map IdP groups to Datacask roles. Use comma-separated values if multiple IdP groups should map to the same role:
+
+```env
+OAUTH_OIDC_ROLE_MAP_ADMIN=databasement-admins
+OAUTH_OIDC_ROLE_MAP_MEMBER=databasement-members,devops-team
+OAUTH_OIDC_ROLE_MAP_VIEWER=databasement-viewers,interns
+```
+
+When at least one `ROLE_MAP` is set, mapping is active. Users whose groups don't match any mapping get the `OAUTH_DEFAULT_ROLE`.
+
+### Strict Mode
+
+To deny access to users without a matching group (instead of falling back to the default role):
+
+```env
+OAUTH_OIDC_ROLE_STRICT=true
+```
+
+With strict mode, users who don't have any matching group are rejected at login — even returning users whose groups have been revoked in the IdP.
+
+### Custom Claim Name
+
+By default, Datacask reads the `groups` claim. If your IdP uses a different claim name (e.g., `roles` or `realm_access`):
+
+```env
+OAUTH_OIDC_ROLE_CLAIM=roles
+```
+
+### Full Example (Keycloak)
+
+```env
+OAUTH_OIDC_ENABLED=true
+OAUTH_OIDC_CLIENT_ID=databasement
+OAUTH_OIDC_CLIENT_SECRET=your-secret
+OAUTH_OIDC_BASE_URL=https://keycloak.example.com/realms/your-realm
+OAUTH_OIDC_LABEL=Keycloak
+OAUTH_OIDC_SCOPES=groups
+
+OAUTH_OIDC_ROLE_MAP_ADMIN=databasement-admins
+OAUTH_OIDC_ROLE_MAP_MEMBER=databasement-members
+OAUTH_OIDC_ROLE_MAP_VIEWER=databasement-viewers
+OAUTH_OIDC_ROLE_STRICT=true
+```
+
+:::tip Keycloak Group Mapper
+In Keycloak, go to your client > **Client scopes** > **databasement-dedicated** > **Mappers** > **Add mapper** > **Group Membership**. Set the token claim name to `groups` and disable "Full group path" to get flat group names.
+:::
+
+### Environment Variables Reference
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OAUTH_OIDC_SCOPES` | *(empty)* | Extra OIDC scopes to request (comma-separated, e.g., `groups`) |
+| `OAUTH_OIDC_ROLE_CLAIM` | `groups` | JWT claim containing the user's groups |
+| `OAUTH_OIDC_ROLE_MAP_ADMIN` | *(empty)* | IdP groups that map to the **admin** role (comma-separated) |
+| `OAUTH_OIDC_ROLE_MAP_MEMBER` | *(empty)* | IdP groups that map to the **member** role (comma-separated) |
+| `OAUTH_OIDC_ROLE_MAP_VIEWER` | *(empty)* | IdP groups that map to the **viewer** role (comma-separated) |
+| `OAUTH_OIDC_ROLE_STRICT` | `false` | Deny login when no group matches (instead of using default role) |
+
+For local development OAuth testing, see the [Development Guide](../../contributing/development.md#oauth--sso-testing).
+
+---
+
+## Versioning
+
+
+Datacask follows [semantic versioning](https://semver.org/). The Docker images, Helm chart, and application all share the same version number — version `1.0.1` means the same release everywhere.
+
+Every change is listed on the [Changelog](../changelog.md) page, which is also shown inside the application (linked from the sidebar and the update dialog). Available versions are listed on [GitHub Releases](https://github.com/hjdyzy/datacask/releases).
+
+## Docker Image Tags
+
+Docker images are published to the public Alibaba Cloud ACR repository. When a new version is released (e.g., `1.0.1`), the following tags are published:
+
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.0.1` — exact version (pinned)
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.0` — latest patch in the 1.0.x line
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1` — latest release in the 1.x.x line
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest` — most recent release
+
+The deployment guides use `latest` to follow the newest production release. Pin an exact version when you need a controlled upgrade or rollback target.
+
+There is also `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:edge`, rebuilt from every push to `main`. It contains unreleased changes and carries no version number, so use it to try something out, never in production.
+
+## Helm Chart
+
+The Helm chart uses the same version as the application — installing chart version `1.0.1` deploys app version `1.0.1`.
+
+### Install
+
+```bash
+helm repo add datacask https://hjdyzy.github.io/datacask
+helm repo update
+helm install datacask datacask/databasement --version 1.0.1
+```
+
+### Update
+
+```bash
+helm repo update
+helm upgrade datacask datacask/databasement --version 1.0.1
+```
+
+### Use as a dependency
+
+In your `Chart.yaml`:
+
+```yaml
+dependencies:
+  - name: databasement
+    version: "1.0.1"
+    repository: "https://hjdyzy.github.io/datacask"
+```
+
+Then run `helm dependency update`.
+
+For full Helm configuration options, see the [Kubernetes + Helm](./kubernetes-helm) guide.
+
+---
+
+## Changelog
+
+
+All notable changes to Datacask are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Each section covers one minor version; every entry is prefixed with the patch release
+that shipped it. Releases before 1.0.0 are only listed on
+[GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
+are inherited from Databasement and keep their original upstream pull request links.
+
+## [Unreleased]
+
+### Added
+
+- Native Enterprise WeChat group robot notifications.
+
+### Changed
+
+- Product, documentation, release, container image, and Helm links now use Datacask resources.
+
+## [1.7] - 2026-09-07 {#v1-7}
+
+### Added
+
+- `1.7.14` SSH tunnels have an optional compression setting, on the database server form and the SSH config API, which trades CPU for bandwidth when the tunnel runs over a slow link ([#543](https://github.com/David-Crty/databasement/pull/543))
+- `1.7.13` The French, Spanish, Greek and Traditional Chinese interfaces are fully translated and use consistent wording: about 38% of the strings fell back to English in each locale, and page titles, path validation messages and several flash messages could not be translated at all ([#602](https://github.com/David-Crty/databasement/pull/602)) ([#603](https://github.com/David-Crty/databasement/pull/603))
+- `1.7.12` The v1 REST API is rate limited, 300 requests a minute per access token by default; `API_RATE_LIMIT` raises or lowers the ceiling and `0` turns it off where a gateway already throttles. The agent daemon routes and the web interface are not affected ([#524](https://github.com/David-Crty/databasement/pull/524))
+- `1.7.11` Super admins can list the database servers of every organization at once, from a searchable overview opened on the Configuration → Organizations page, with the latest backup status of each server and a shortcut that switches to its organization and opens the server or its jobs ([#521](https://github.com/David-Crty/databasement/pull/521))
+- `1.7.11` The changelog is written for the people who run Databasement and published as a page in the application, linked from the sidebar and the update dialog, and on the documentation site ([#600](https://github.com/David-Crty/databasement/pull/600))
+- `1.7.9` Snapshots can carry a free-text comment and be locked, which excludes them from automatic cleanup and blocks manual deletion until unlocked ([#522](https://github.com/David-Crty/databasement/pull/522))
+- `1.7.4` A restore from a PostgreSQL snapshot that preserves ownership and privileges can now set the owner of the restored database, and the one-off restore API accepts `options.owner_user` as scheduled restores already did ([#525](https://github.com/David-Crty/databasement/pull/525)) ([#577](https://github.com/David-Crty/databasement/pull/577))
+- `1.7.4` PostgreSQL servers have an optional connection database field, defaulting to `postgres`, for managed providers (Heroku, RDS, Neon) whose roles are not allowed to connect to `postgres` ([#560](https://github.com/David-Crty/databasement/pull/560))
+- `1.7.1` SSH tunnel configurations can be managed through the REST API at `/api/v1/database-server-ssh-configs`, with optional server-side key generation, so a pipeline can create one and pass its id to the database server endpoint ([#493](https://github.com/David-Crty/databasement/pull/493)) ([#496](https://github.com/David-Crty/databasement/pull/496))
+- `1.7.0` A backup configuration can target several storage volumes: the database is dumped once and the archive uploaded to each, and the Restore modal and the download button let you pick the copy when a snapshot has more than one ([#478](https://github.com/David-Crty/databasement/pull/478))
+- `1.7.0` PostgreSQL servers have a "Use SSL" option that requires TLS on every connection ([#490](https://github.com/David-Crty/databasement/pull/490)) ([#491](https://github.com/David-Crty/databasement/pull/491))
+- `1.7.0` Each volume copy of a snapshot has its own badge on the snapshot list, coloured by state (failed upload with the error, missing file, still uploading), and the download picker shows the archive size ([#495](https://github.com/David-Crty/databasement/pull/495))
+
+### Changed
+
+- `1.7.10` Every button that triggers a server request shows a spinner while the request is in flight, including per-row actions and form submits ([#599](https://github.com/David-Crty/databasement/pull/599))
+- `1.7.1` Job logs keep the start and the end of a command's output, note what was dropped, and are written at most once per second, so a dump emitting many warnings no longer makes the interface crawl ([#497](https://github.com/David-Crty/databasement/pull/497))
+
+### Deprecated
+
+- `1.7.0` The `volume_id` and `volume` keys of the v1 backup API are kept but deprecated in favour of `volume_ids` and `volumes` ([#478](https://github.com/David-Crty/databasement/pull/478))
+
+### Fixed
+
+- `1.7.12` The `latest` Docker image is published from the release tag only, so it can no longer be overwritten by a concurrent build of `main` that carries no version number, which blanked the version badge and the update dialog. The tip of `main` is published as `edge` ([#601](https://github.com/David-Crty/databasement/pull/601))
+- `1.7.10` A form that fails validation raises a toast, expands the collapsed section holding the first invalid field and scrolls it into view with focus; the connection test buttons validate the same way ([#598](https://github.com/David-Crty/databasement/pull/598))
+- `1.7.9` A command log no longer shows a running spinner forever when the job dies before the command finishes (queue timeout, killed worker, fatal error); it is marked failed together with the job ([#541](https://github.com/David-Crty/databasement/pull/541))
+- `1.7.8` PostgreSQL servers below version 17 are dumped with the PostgreSQL 16 client, now shipped in the image alongside the 18 client, so their snapshots restore back into the server they came from; when no matching client exists, the job log warns that the snapshot may only load into a newer server ([#595](https://github.com/David-Crty/databasement/pull/595)) ([#596](https://github.com/David-Crty/databasement/pull/596))
+- `1.7.5` Page navigation no longer stops working until a manual refresh once the version modal has rendered, a regression from the UI library upgrade in 1.7.4 ([#580](https://github.com/David-Crty/databasement/pull/580))
+- `1.7.4` Plain-format PostgreSQL restores fail on the first SQL error instead of being reported as completed with the data untouched ([#550](https://github.com/David-Crty/databasement/pull/550)) ([#562](https://github.com/David-Crty/databasement/pull/562))
+- `1.7.4` Encrypted snapshots of PostgreSQL custom-format, Redis, MongoDB, MSSQL and Firebird dumps restore again instead of failing with "output file not found" ([#551](https://github.com/David-Crty/databasement/pull/551)) ([#561](https://github.com/David-Crty/databasement/pull/561))
+- `1.7.3` Deleting a row from a later page of a list no longer sends you back to page one; only filter changes reset the page ([#517](https://github.com/David-Crty/databasement/pull/517))
+- `1.7.2` A backup running longer than 90 seconds is no longer handed to a second queue worker that dumped the same snapshot concurrently: the queue's `retry_after` now follows the backup job timeout, duplicate deliveries are dropped, and workers restart when the timeout changes ([#488](https://github.com/David-Crty/databasement/pull/488)) ([#510](https://github.com/David-Crty/databasement/pull/510))
+- `1.7.1` Backups of MySQL servers on the new year-based version scheme (26.x) work again: the MariaDB dump client's `--routines` flag, which fails on them, is dropped with a warning in the job log ([#494](https://github.com/David-Crty/databasement/pull/494)) ([#498](https://github.com/David-Crty/databasement/pull/498))
+
+### Security
+
+- `1.7.14` Setting a password from an invitation re-reads the invitation from the database on every step, instead of acting on the state the page was rendered with, and the Adminer window builds its address from the route rather than taking it from the browser ([#606](https://github.com/David-Crty/databasement/pull/606))
+- `1.7.13` The toast helpers are no longer part of the client-facing method surface of every interactive page, where the browser could call them to display an arbitrary message; copy-to-clipboard confirmations are now rendered without a server round trip ([#605](https://github.com/David-Crty/databasement/pull/605))
+- `1.7.8` The Azure custom blob endpoint rejects link-local and instance metadata addresses, as the S3 endpoints already did, and the SFTP, FTP and SMB host fields only accept hostnames and IP addresses ([#594](https://github.com/David-Crty/databasement/pull/594))
+- `1.7.8` Records looked up by id through the web and REST routes are resolved with the organization context in place, so an id from another organization is not found instead of being returned; policies now also check that the record belongs to the current organization ([#591](https://github.com/David-Crty/databasement/pull/591))
+- `1.7.8` The Redis password is masked in logged commands; it was stored in cleartext in the job logs, which every member of the organization can read ([#593](https://github.com/David-Crty/databasement/pull/593))
+- `1.7.7` The job logs modal checks the view permission wherever the job id comes from, so a job from another organization cannot be opened by setting the id from the browser ([#589](https://github.com/David-Crty/databasement/pull/589))
+- `1.7.6` Looking up a single job through the REST API or the MCP job status tool only finds jobs in the current organization ([#584](https://github.com/David-Crty/databasement/pull/584))
+- `1.7.6` The bundled web server only executes `public/index.php`; any other `.php` file under `public/` returns 404 instead of running ([#585](https://github.com/David-Crty/databasement/pull/585))
+- `1.7.6` Dump flags that choose where the dump client writes or loads options from (such as `--result-file`, `--file`, `--out`, `--rdb` and `/targetfile`) are rejected per engine, and the MSSQL dump flags are now validated by the API too ([#583](https://github.com/David-Crty/databasement/pull/583))
+- `1.7.6` The `ssh_config_id` accepted by the database server API must belong to the current organization ([#582](https://github.com/David-Crty/databasement/pull/582))
+- `1.7.3` Restore records are scoped to their organization, so a restore from another organization cannot be viewed or deleted by id; cross-organization notification links to snapshots resolve again ([#516](https://github.com/David-Crty/databasement/pull/516))
+- `1.7.3` The post-backup and post-restore hook scripts can only be edited by super admins; notification channel URLs reject link-local and instance metadata addresses; SQLite and Firebird database paths are validated ([#515](https://github.com/David-Crty/databasement/pull/515))
+- `1.7.2` Snapshots and scheduled restores are scoped to their organization by default and a restore source must belong to the same organization as its target; database host fields are restricted to hostnames and IP addresses, S3 endpoints reject link-local and instance metadata addresses, SQLite and Firebird paths and agent-reported filenames are validated, and `/health/debug` requires authentication ([#511](https://github.com/David-Crty/databasement/pull/511))
+- `1.7.0` Bumped `concurrently` to pull in `shell-quote` 1.9.0, fixing a denial of service (CVE-2026-13311) ([#486](https://github.com/David-Crty/databasement/pull/486))
+
+## [1.6] - 2026-07-27 {#v1-6}
+
+### Added
+
+- `1.6.9` Samba/SMB shares are a native volume type, so backups can target Windows or Samba shares without mounting them on the host; the volumes guide also explains how to use NFS through a host mount and a Local volume ([#411](https://github.com/David-Crty/databasement/pull/411))
+- `1.6.8` Volumes can carry a storage limit in GB: a backup whose upload would push the volume over the limit fails before uploading, without retry, and sends a notification explaining why; the volume list shows current usage next to the limit ([#458](https://github.com/David-Crty/databasement/pull/458))
+- `1.6.8` A per-volume notify-only option for the storage limit uploads the backup anyway and sends a warning notification instead of failing it ([#462](https://github.com/David-Crty/databasement/pull/462))
+- `1.6.8` Traditional Chinese (zh-TW) translation ([#456](https://github.com/David-Crty/databasement/pull/456))
+- `1.6.7` New `user:reset-password` Artisan command to reset a user's password from the command line when email delivery is not configured ([#453](https://github.com/David-Crty/databasement/pull/453))
+- `1.6.6` MongoDB servers can use SRV connection strings (`mongodb+srv://`, as used by MongoDB Atlas) and pass extra connection options such as `tls=true` or `replicaSet=rs0`; the password is masked in logged dump and restore commands ([#444](https://github.com/David-Crty/databasement/pull/444))
+- `1.6.5` Azure Blob Storage volume type, with an optional custom endpoint for sovereign clouds, Azure-compatible gateways and the Azurite emulator ([#443](https://github.com/David-Crty/databasement/pull/443))
+- `1.6.3` Optional multithreaded compression for zstd and 7z, off by default, spreads compression across all CPU cores for local and remote-agent backups; the compression level is now a slider capped per algorithm (9 for gzip and 7z, 19 for zstd) ([#436](https://github.com/David-Crty/databasement/pull/436))
+- `1.6.0` Roles are editable at runtime: the new Roles tab under Configuration lets super admins build custom roles from a catalogue of abilities alongside the built-in Admin, Member, Operator and Viewer roles, and users can be granted extra abilities on top of their role in each organization ([#409](https://github.com/David-Crty/databasement/pull/409))
+- `1.6.0` The documentation site is versioned per minor release, with a version switcher in the navbar and older versions served under their own path ([#427](https://github.com/David-Crty/databasement/pull/427))
+
+### Changed
+
+- `1.6.10` Maintenance release with no application changes
+- `1.6.7` MySQL and MariaDB dumps no longer repeat every column name on every `INSERT` row, which inflated dump size for no benefit since Restore recreates each table from the dump before inserting its rows ([#452](https://github.com/David-Crty/databasement/pull/452))
+- `1.6.5` The multithreaded compression setting also applies to decompression during Restore, so zstd and 7z snapshots are decompressed across all CPU cores ([#442](https://github.com/David-Crty/databasement/pull/442))
+- `1.6.5` Configuration screens share a consistent card heading and table layout that stacks on small screens, tooltips on table buttons also show on small screens, and the Organizations card no longer shows its title twice ([#441](https://github.com/David-Crty/databasement/pull/441))
+- `1.6.1` Maintenance release with internal changes only
+- `1.6.0` Create and edit pages for agents, database servers and volumes have a Back button in the header, and the volume list shows the volume type as a badge with its icon
+
+### Fixed
+
+- `1.6.12` The Docker image declares port 2226, so reverse proxies such as Traefik detect the port the app listens on instead of the base image's 80 and 443 ([#485](https://github.com/David-Crty/databasement/pull/485))
+- `1.6.11` The registration and password forms (forgot, reset, confirm) show validation errors inline and keep non-secret fields filled in after a failed submit, instead of bouncing back to a blank form ([#482](https://github.com/David-Crty/databasement/pull/482))
+- `1.6.9` Snapshots on Local volumes can be downloaded when the queue worker and the web server run as different users, as in the stock Docker setup; directories created by backups were private to the worker, so downloads returned 404 ([#473](https://github.com/David-Crty/databasement/pull/473))
+- `1.6.8` Backup jobs no longer hang when the mail server is unreachable: outgoing mail times out (`MAIL_TIMEOUT`, default 10 seconds), notification errors are logged instead of stalling or failing the job, one broken channel no longer blocks delivery to the others, and Discord, Telegram and Pushover channels pick up an edited token without a worker restart ([#466](https://github.com/David-Crty/databasement/pull/466))
+- `1.6.8` The logo link honours a subpath in `APP_URL` when the app is hosted behind a reverse proxy under a prefix ([#459](https://github.com/David-Crty/databasement/pull/459))
+- `1.6.6` Tab content such as the commands in the "How to update?" modal and the agent token instructions was invisible in production builds ([#451](https://github.com/David-Crty/databasement/pull/451))
+- `1.6.4` PostgreSQL TLS connections work in the Docker image: the application user inherited an unreadable `HOME`, which made the PostgreSQL client silently fall back to an unencrypted connection with `sslmode=prefer` or fail outright with `sslmode=require` ([#438](https://github.com/David-Crty/databasement/pull/438))
+- `1.6.2` Links inside older documentation versions stay within that version instead of jumping to the latest docs ([#429](https://github.com/David-Crty/databasement/pull/429))
+- `1.6.0` Configuration screens no longer glitch at narrow widths: ability badges stay on one line with the roles table scrolling horizontally, the two Adminer alerts are spaced apart, and long values such as `TRUSTED_PROXIES` are truncated with the full value shown on hover
+
+## [1.5] - 2026-06-26 {#v1-5}
+
+### Added
+
+- `1.5.6` A new Operator role sits between Viewer and Member: it can run Backups and Restores, download Snapshots and manage Restores, but cannot change server, volume or schedule configuration, delete Snapshots or manage users ([#408](https://github.com/David-Crty/databasement/pull/408))
+- `1.5.4` Hook scripts can run after every successful Backup and Restore, configured under Configuration → Backup; they receive the job context as `BACKUP_*` / `RESTORE_*` environment variables, stream their output into the job log, never fail the job on a non-zero exit, and post-backup hooks also run on remote agents. The server page now shows a copyable server ID for use in scripts ([#398](https://github.com/David-Crty/databasement/pull/398))
+- `1.5.3` Organizations can be merged: merging one into another moves all of its database servers, volumes, agents and SSH configurations, combines the members (an existing role in the destination is kept), and deletes the source; merges and deletions now run as background jobs in a single transaction and are recorded in the log ([#401](https://github.com/David-Crty/databasement/pull/401))
+- `1.5.3` Telegram notification channels take an optional Topic ID so messages go to a specific topic of a forum group ([#403](https://github.com/David-Crty/databasement/pull/403))
+- `1.5.0` The remote agent Backup pathway is back: an agent installed next to the database connects to Databasement over outbound HTTPS, so firewalled environments no longer need inbound SSH access; the agent's connection status is shown in the Agents list, the server form and the server page ([#390](https://github.com/David-Crty/databasement/pull/390)) ([#394](https://github.com/David-Crty/databasement/pull/394))
+
+### Changed
+
+- `1.5.3` Success and failure notifications share one message format on every channel, including a single email template ([#404](https://github.com/David-Crty/databasement/pull/404))
+- `1.5.2` Remote agents are no longer marked as Beta in the menu ([#388](https://github.com/David-Crty/databasement/pull/388)) ([#400](https://github.com/David-Crty/databasement/pull/400))
+
+### Fixed
+
+- `1.5.5` Deleting a Snapshot also removes the date folder it leaves empty on the volume, instead of letting empty folders pile up ([#405](https://github.com/David-Crty/databasement/pull/405)) ([#406](https://github.com/David-Crty/databasement/pull/406))
+- `1.5.2` Saving or cancelling a database server edit takes you back to the page you came from instead of always landing on the server list ([#378](https://github.com/David-Crty/databasement/pull/378))
+- `1.5.2` Failed Snapshots are once again left out of the Snapshot counters on the server list and server page, after the remote agent change in 1.5.0 undid that fix ([#397](https://github.com/David-Crty/databasement/pull/397))
+- `1.5.1` Adminer is disabled for database servers reached through a remote agent, since those cannot be connected to directly ([#395](https://github.com/David-Crty/databasement/pull/395))
+- `1.5.0` Failed Snapshots are no longer counted in the Snapshot counters on the server list and server page ([#377](https://github.com/David-Crty/databasement/pull/377))
+
+### Security
+
+- `1.5.6` The bundled SSH/SFTP library (phpseclib) is updated to 3.0.55, fixing CVE-2026-55599, where X.509 certificate validation could be made to send attacker-controlled outbound requests ([#407](https://github.com/David-Crty/databasement/pull/407))
+
+## [1.4] - 2026-06-16 {#v1-4}
+
+### Added
+
+- `1.4.1` Greek is available as an interface language ([#372](https://github.com/David-Crty/databasement/pull/372))
+- `1.4.1` PostgreSQL servers can back up ownership and privilege information; the choice is recorded in the snapshot so restores apply it regardless of the target server's own setting ([#370](https://github.com/David-Crty/databasement/pull/370))
+- `1.4.0` Email notification channels accept multiple recipients ([#367](https://github.com/David-Crty/databasement/pull/367))
+- `1.4.0` Backups can be enabled or disabled from the actions menu of the database server list ([#369](https://github.com/David-Crty/databasement/pull/369))
+
+### Changed
+
+- `1.4.2` The Docker image ships MongoDB's official `mongodump` and `mongorestore` (100.17.0, amd64 and arm64) instead of the Alpine edge package ([#379](https://github.com/David-Crty/databasement/pull/379))
+
+### Removed
+
+- `1.4.0` **Breaking:** The remote agent mode (`DATABASEMENT_URL`, the `agent:run` command, agent pages and API) is removed in favor of SSH tunnels; a migration drops the agent tables ([#365](https://github.com/David-Crty/databasement/pull/365))
+
+### Fixed
+
+- `1.4.2` SQL Server backups and restores work on arm64 images, where `sqlpackage` was previously shipped as a non-functional x64 binary ([#381](https://github.com/David-Crty/databasement/pull/381))
+- `1.4.1` Restores are refused for snapshots that are not completed or have no backup file, background jobs no longer error when their record was deleted while they ran, and temporary SSH credential files are cleaned up when a tunnel fails to start ([#373](https://github.com/David-Crty/databasement/pull/373))
+- `1.4.0` Weekly and monthly retention keeps the newest snapshot of each period instead of the oldest, so the monthly tier no longer lags by up to a month ([#364](https://github.com/David-Crty/databasement/pull/364))
+
+## [1.3] - 2026-06-06 {#v1-3}
+
+### Added
+
+- `1.3.0` Scheduled Restores: the latest Snapshot of one server can be restored onto another server automatically on an existing backup schedule, managed from a new Scheduled Restores page and the API; a backup schedule in use by a Scheduled Restore can no longer be deleted ([#321](https://github.com/David-Crty/databasement/pull/321))
+- `1.3.0` Built-in Adminer database browser: browse a registered server's data from its server page, enabled by default for admins and controlled from Configuration > Application, with read-only access for the demo user (not available for servers reached through an SSH tunnel or a remote agent) ([#199](https://github.com/David-Crty/databasement/pull/199))
+
+### Fixed
+
+- `1.3.1` Scheduled Restores require a source database name, hide Redis servers from the source picker and ask for the schedule before source and target; SQLite and Firebird destination paths are validated the same way in the Restore wizard, the Scheduled Restore wizard and the API, and the SQLite destination autocomplete suggests full file paths instead of bare file names ([#362](https://github.com/David-Crty/databasement/pull/362))
+
+## [1.2] - 2026-06-03 {#v1-2}
+
+### Added
+
+- `1.2.11` Firebird 3, 4 and 5 databases can be backed up and restored; each `.fdb` file is selected by path like SQLite while keeping host, port and credentials, and the Backup and Restore forms accept path-style database names for it ([#357](https://github.com/David-Crty/databasement/pull/357)) ([#356](https://github.com/David-Crty/databasement/pull/356))
+- `1.2.6` `OAUTH_ONLY_MODE=true` hides the password login form, rejects password logins server-side and turns off password reset; first-user registration still works so an instance can be set up before its identity provider is connected ([#332](https://github.com/David-Crty/databasement/pull/332))
+- `1.2.5` PostgreSQL servers have a "Dump format" setting: the custom format writes `.dump` archives that are restored with 4 parallel `pg_restore` workers (the target server must be PostgreSQL 17 or newer); plain SQL stays the default ([#330](https://github.com/David-Crty/databasement/pull/330))
+- `1.2.5` An Ed25519 SSH keypair can be generated from the database server form when using private key authentication; the public key is shown once with a copy button for the SSH server's `authorized_keys` file ([#324](https://github.com/David-Crty/databasement/pull/324))
+- `1.2.4` Each database server has a read-only page, linked from its name in the list, that summarises connection, SSH, agent, backup and notification settings and shows the server's latest jobs; row actions move into a dropdown and every backup configuration gets a "Backup now" button ([#319](https://github.com/David-Crty/databasement/pull/319))
+- `1.2.3` MySQL and MariaDB servers have a "Use SSL" toggle for managed databases that enforce TLS, such as Amazon RDS with `require_secure_transport=ON` ([#314](https://github.com/David-Crty/databasement/pull/314))
+- `1.2.2` Microsoft SQL Server can be backed up and restored: backups are taken with Microsoft's `sqlpackage` tool and restores re-import them after dropping the existing target database ([#293](https://github.com/David-Crty/databasement/pull/293))
+- `1.2.0` Multi-organization support: users can belong to several organizations, with a role per organization, and switch between them from the sidebar; database servers, volumes, agents, Snapshots and backup jobs belong to the current organization, and existing data is moved into a "Default" organization on upgrade ([#275](https://github.com/David-Crty/databasement/pull/275)) ([#282](https://github.com/David-Crty/databasement/pull/282))
+- `1.2.0` Organizations are managed from Configuration → Organizations (create, edit, delete with resource checks, invitation links, member counts); organization admins manage the users of their own organization while super admins manage all ([#275](https://github.com/David-Crty/databasement/pull/275))
+- `1.2.0` The API lists the caller's organizations at `GET /api/v1/user/organizations` and accepts an `X-Organization-Id` header to act in a given organization, the MCP server gains a tool to list organizations and switch context, and users created through OAuth join the organization of their invitation link or `OAUTH_DEFAULT_ORGANIZATION_ID` ([#275](https://github.com/David-Crty/databasement/pull/275))
+
+### Changed
+
+- `1.2.9` Maintenance release with no application changes
+- `1.2.8` The Configuration → Application page lists `APP_DISPLAY_TIMEZONE` as the timezone setting instead of `TZ`
+- `1.2.5` **Breaking:** SQL Server backups produce DACPAC instead of BACPAC files, so backups of on-premises instances no longer fail Azure compatibility validation; Snapshots taken before this release (`.bacpac.gz`) can no longer be restored ([#318](https://github.com/David-Crty/databasement/pull/318))
+- `1.2.3` The Jobs page is split into separate Snapshots and Restores pages, notification links point at the right one, and the Restore modal opens from a server row, a Snapshot row or a "New Restore" button with the known fields pre-selected ([#308](https://github.com/David-Crty/databasement/pull/308))
+- `1.2.3` The Snapshots and Restores lists are redesigned: rows are tinted by state, IDs are shown compactly with a popover and are searchable, the Created and Status columns are sortable, a Restore can be re-run from its row, and list polling drops from 5 to 30 seconds ([#312](https://github.com/David-Crty/databasement/pull/312))
+- `1.2.0` Admins always see the delete and remove-from-organization buttons for users they have authority over; when a rule blocks the action (user in several organizations, last super admin), the confirmation dialog explains why ([#275](https://github.com/David-Crty/databasement/pull/275))
+
+### Removed
+
+- `1.2.3` The `MYSQL_CLI_TYPE` environment variable is no longer read; the MariaDB client is always used ([#314](https://github.com/David-Crty/databasement/pull/314))
+
+### Fixed
+
+- `1.2.12` A scheduled Backup in All or Pattern mode that cannot reach its database (host down, backup user removed) now records a failed Snapshot and sends the failure notification instead of producing nothing, so the dashboard, API and monitoring see the incident ([#359](https://github.com/David-Crty/databasement/pull/359))
+- `1.2.10` Modal dialogs no longer extend behind the address and navigation bars of mobile browsers, keeping the close button and action row reachable ([#341](https://github.com/David-Crty/databasement/pull/341))
+- `1.2.10` Timestamps on the health and debug pages are rendered in the display timezone ([#340](https://github.com/David-Crty/databasement/pull/340))
+- `1.2.7` Timestamps are stored in UTC and rendered in `APP_DISPLAY_TIMEZONE` (the container entrypoint carries an existing `TZ` value over, in the Helm chart's worker and migration pods too), so jobs no longer show wrong durations or a false failed state when the web and worker containers disagree on the system timezone ([#336](https://github.com/David-Crty/databasement/pull/336))
+- `1.2.4` The edit form no longer freezes for 30 seconds when the database host is unreachable: database discovery uses a 5-second connection timeout and is skipped for agent-backed servers ([#320](https://github.com/David-Crty/databasement/pull/320))
+- `1.2.3` The default `postgres` database is included in the list of available PostgreSQL databases, so data stored there is no longer left out of backups ([#315](https://github.com/David-Crty/databasement/pull/315))
+- `1.2.1` Backup jobs left running or pending after a queue worker crash are marked failed by the scheduled `jobs:recover-stuck` command (formerly `agent:recover-leases`) once they exceed the job timeout plus a 5-minute grace period ([#287](https://github.com/David-Crty/databasement/pull/287))
+- `1.2.1` The update check no longer reports an older "latest version" from a stale cache after upgrading ([#288](https://github.com/David-Crty/databasement/pull/288))
+- `1.2.1` SQLite backups no longer fail with "unable to open database file" on WAL-mode databases whose `-shm` file does not exist, because the `-readonly` flag is no longer passed to `sqlite3` ([#284](https://github.com/David-Crty/databasement/pull/284))
+
+### Security
+
+- `1.2.11` The `shell-quote` package pulled in by the local `npm` development tooling is upgraded to 1.8.4 to fix CVE-2026-9277 (command injection) ([#343](https://github.com/David-Crty/databasement/pull/343))
+- `1.2.2` The SQL Server password is masked in logged `sqlpackage` commands
+
+## [1.1] - 2026-05-06 {#v1-1}
+
+### Added
+
+- `1.1.0` **Breaking:** A database server can have several Backup configurations, each with its own schedule, volume, retention policy and database selection; API clients must send and read a `backups` array instead of the single `backup` object, with the database selection fields moved into each entry, and the MCP `trigger-backup` tool accepts an optional `backup_id` ([#212](https://github.com/David-Crty/databasement/pull/212))
+- `1.1.0` Each Backup configuration on the database server list has its own "Backup now" button, so a single configuration can run without triggering all of them, and the success toast names which one ran ([#226](https://github.com/David-Crty/databasement/pull/226))
+
+### Changed
+
+- `1.1.7` The Configuration page is split into Application, Backup, Notification and Authentication tabs, each with its own URL ([#264](https://github.com/David-Crty/databasement/pull/264))
+- `1.1.5` The theme follows the operating system's light or dark preference by default instead of always starting dark; the choice is stored in the browser, and an existing cookie preference is carried over on the next visit ([#262](https://github.com/David-Crty/databasement/pull/262))
+- `1.1.4` The application runs on PHP 8.5 and Laravel 13; the Docker image ships PHP 8.5 and installs from source need it ([#239](https://github.com/David-Crty/databasement/pull/239))
+- `1.1.2` The database server list uses fixed column widths, inline action icons instead of a dropdown menu, and a plain tooltip for the connection status ([#232](https://github.com/David-Crty/databasement/pull/232))
+
+### Removed
+
+- `1.1.4` Laravel Octane is gone and FrankenPHP serves requests directly; the `OCTANE_ENABLED`, `OCTANE_WORKERS` and `OCTANE_MAX_REQUESTS` variables no longer have any effect ([#237](https://github.com/David-Crty/databasement/pull/237))
+
+### Fixed
+
+- `1.1.7` Pagination controls follow the active theme instead of default Tailwind styling, no longer flash a scrollbar, and are translated in French and Spanish ([#277](https://github.com/David-Crty/databasement/pull/277))
+- `1.1.7` Navigating between pages no longer flashes the wrong theme for an instant ([#276](https://github.com/David-Crty/databasement/pull/276))
+- `1.1.6` Toast notifications are displayed on the login and other authentication pages
+- `1.1.6` The Copy buttons in the "How to update?" dialog show their "Copied to clipboard" confirmation again instead of failing
+- `1.1.4` SQLite no longer fails with "database is locked" under concurrent load: write transactions take their lock up front (`DB_TRANSACTION_MODE`, default `IMMEDIATE`), WAL journal mode is dropped because its sidecar files left stale locks and do not work on NFS volumes (so `DB_JOURNAL_MODE` no longer applies), and `db:wait` releases its connection between retries ([#236](https://github.com/David-Crty/databasement/pull/236))
+- `1.1.4` `db:wait --check-migrations` keeps polling while migrations are pending instead of crashing with a stack trace ([#240](https://github.com/David-Crty/databasement/pull/240))
+- `1.1.3` SQLite waits up to 5 seconds for a lock (`DB_BUSY_TIMEOUT`) and uses WAL journal mode (`DB_JOURNAL_MODE`), so the web server, queue worker and scheduler writing at the same time no longer fail with "database is locked" ([#233](https://github.com/David-Crty/databasement/pull/233))
+- `1.1.3` The database server list fits on phone screens: the Backup and Jobs columns are hidden on small screens, and the per-configuration "Backup now" button only appears when a server has more than one Backup configuration ([#234](https://github.com/David-Crty/databasement/pull/234))
+- `1.1.1` Running a version newer than the latest published release is reported as up to date instead of outdated ([#227](https://github.com/David-Crty/databasement/pull/227))
+- `1.1.1` Backup labels on the database server list wrap on small screens instead of overflowing the card ([#228](https://github.com/David-Crty/databasement/pull/228))
+- `1.1.0` Notifications after saving or deleting are shown as toasts that sit above other elements and have a proper close icon, replacing the inline status banners ([#224](https://github.com/David-Crty/databasement/pull/224))
+
+## [1.0] - 2026-04-15 {#v1-0}
+
+### Added
+
+- `1.0.12` The snapshots API accepts a `filter[database_server_id]` parameter to list the snapshots of a single server ([#216](https://github.com/David-Crty/databasement/pull/216))
+- `1.0.12` The footer shows whether a newer release is available and opens update instructions for Docker Compose, Helm and Docker with copy buttons; the check runs only on tagged builds, and untagged builds show their short commit hash instead ([#217](https://github.com/David-Crty/databasement/pull/217)) ([#222](https://github.com/David-Crty/databasement/pull/222))
+- `1.0.10` Notification channels are managed as a list in Configuration (add, edit, delete and test each one) and can be assigned per database server; backups and restores can notify on success as well as failure, defaulting to failures only, and existing notification settings are migrated automatically ([#205](https://github.com/David-Crty/databasement/pull/205))
+- `1.0.9` OIDC logins can be assigned a role from a group claim: `OAUTH_OIDC_ROLE_CLAIM` names the claim, `OAUTH_OIDC_ROLE_MAP_ADMIN`, `OAUTH_OIDC_ROLE_MAP_MEMBER` and `OAUTH_OIDC_ROLE_MAP_VIEWER` list the matching groups, and `OAUTH_OIDC_ROLE_STRICT` denies access to users in none of them; works with Keycloak, Authentik and Dex ([#202](https://github.com/David-Crty/databasement/pull/202))
+- `1.0.8` Discord notifications can be sent through a webhook URL, without creating a bot or granting it server permissions ([#195](https://github.com/David-Crty/databasement/pull/195))
+- `1.0.4` REST API endpoints to create, read, update and delete database servers, volumes and backup schedules, plus endpoints to test a database server or volume connection ([#178](https://github.com/David-Crty/databasement/pull/178))
+- `1.0.3` Database servers accept extra dump flags (for example `--no-tablespaces` or `--column-statistics=0`) that are appended to the MySQL, PostgreSQL, MongoDB and Redis dump commands, with a preview of the resulting command; input is validated and each flag is shell-escaped ([#175](https://github.com/David-Crty/databasement/pull/175)) ([#177](https://github.com/David-Crty/databasement/pull/177))
+- `1.0.0` Initial stable release
+
+### Changed
+
+- `1.0.11` The database server form merges database selection and backup configuration into a single step grouped by what, where, when and how long to keep, with a segmented retention picker and a live summary of the backup plan ([#210](https://github.com/David-Crty/databasement/pull/210))
+- `1.0.5` Restores no longer drop and recreate the target database on MySQL and PostgreSQL, so schema ownership and grants set up outside the dump survive; the restore dialog gains a "drop and recreate" option for a clean slate and, on PostgreSQL, an option to transfer ownership of the restored database to a given user ([#185](https://github.com/David-Crty/databasement/pull/185))
+- `1.0.5` The documentation site and the API reference display the released version ([#183](https://github.com/David-Crty/databasement/pull/183))
+- `1.0.1` The `:latest` Docker image is also published on version releases, so it carries the version shown in the footer, and the Helm chart index is served from the root of the GitHub Pages site so `helm repo add` works without a `/charts` suffix ([#171](https://github.com/David-Crty/databasement/pull/171))
+
+### Fixed
+
+- `1.0.12` The two-factor challenge sends you back to the login page with an explanation instead of a 500 error when its session data can no longer be decrypted, and the setup key copy button works over plain HTTP ([#219](https://github.com/David-Crty/databasement/pull/219)) ([#223](https://github.com/David-Crty/databasement/pull/223))
+- `1.0.12` The login page no longer fails to render when an OAuth provider is enabled, as the provider icons were looked up in the wrong icon set ([#218](https://github.com/David-Crty/databasement/pull/218)) ([#221](https://github.com/David-Crty/databasement/pull/221))
+- `1.0.11` Helm: the worker container runs as UID 1000 instead of root, so local backups it writes can be read and downloaded by the web UI instead of returning 404; root-owned files already on the volume are fixed up on the first restart ([#215](https://github.com/David-Crty/databasement/pull/215))
+- `1.0.11` Disabling notifications on a database server no longer blocks saving with an invisible "channels required" validation error ([#211](https://github.com/David-Crty/databasement/pull/211))
+- `1.0.8` A failing Gotify or webhook notification no longer crashes the backup or restore job that triggered it, and errors from "send test notification" are shown to the user ([#197](https://github.com/David-Crty/databasement/pull/197))
+- `1.0.7` Discord bot notifications are delivered again; the channel could not be resolved and every send failed ([#191](https://github.com/David-Crty/databasement/pull/191))
+- `1.0.6` Deleting a database server that was the target of cross-server restores no longer leaves jobs stuck as "Pending" or "Unknown", and pending jobs can be cancelled from the Jobs page ([#188](https://github.com/David-Crty/databasement/pull/188))
+- `1.0.5` An empty `TRUSTED_PROXIES` value falls back to the default private network ranges instead of trusting no proxy at all, which broke fresh Kubernetes installs ([#184](https://github.com/David-Crty/databasement/pull/184))
+- `1.0.2` SQLite backups no longer miss recent writes on databases in WAL mode: the SQLite client's online backup is used instead of copying the file, remote SQLite over SFTP also fetches the `-wal` and `-shm` companion files (flagged best-effort when present), and a missing source file fails the backup instead of producing an empty one ([#174](https://github.com/David-Crty/databasement/pull/174))
+
+[1.7]: https://github.com/David-Crty/databasement/compare/v1.6.12...v1.7.14
+[1.6]: https://github.com/David-Crty/databasement/compare/v1.5.6...v1.6.12
+[1.5]: https://github.com/David-Crty/databasement/compare/v1.4.2...v1.5.6
+[1.4]: https://github.com/David-Crty/databasement/compare/v1.3.1...v1.4.2
+[1.3]: https://github.com/David-Crty/databasement/compare/v1.2.12...v1.3.1
+[1.2]: https://github.com/David-Crty/databasement/compare/v1.1.7...v1.2.12
+[1.1]: https://github.com/David-Crty/databasement/compare/v1.0.12...v1.1.7
+[1.0]: https://github.com/David-Crty/databasement/compare/v1.0.0...v1.0.12
+
+---
+
+## Introduction(User-guide)
+
+
+Welcome to the **User Guide** for **Datacask**!
+
+Datacask is a web-based tool for managing database backups. This guide covers how to use the application to:
+
+- Register and manage database servers
+- Configure backup schedules
+- Create and restore snapshots
+- Manage storage volumes
+
+## Getting Started
+
+After installing Datacask, access the web interface and create your first account.
+
+### 1. Create Your Account
+
+When you first access Datacask, you'll be prompted to register. Create an account with:
+- Your name
+- Email address
+- Password
+
+Two-factor authentication can be enabled later in your account settings for additional security.
+
+### 2. Add a Database Server
+
+Navigate to **Database Servers** and click **Add Server**. You'll need:
+
+- **Name**: A friendly name for this server (e.g., "Production MySQL")
+- **Type**: MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, or Redis/Valkey
+- **Host**: The server hostname or IP address
+- **Port**: The database port (default: 3306 for MySQL, 5432 for PostgreSQL, 1433 for SQL Server, 27017 for MongoDB, 3050 for Firebird, 6379 for Redis)
+- **Username**: Database user with backup privileges
+- **Password**: The database password
+
+Click **Test Connection** to verify the connection before saving.
+
+### 3. Create a Storage Volume
+
+Before creating backups, you need a storage volume. Navigate to **Volumes** and click **Add Volume**.
+
+Datacask supports:
+- **Local storage**: Store backups on the server's filesystem
+- **S3-compatible storage**: Amazon S3, MinIO, DigitalOcean Spaces, etc.
+
+### 4. Create Your First Backup
+
+Go to **Database Servers**, find your server, and click **Backup**. Select the database and storage volume, then start the backup.
+
+Backups run asynchronously - you can navigate away and check progress later on the **Snapshots** page.
+
+### 5. Restore a Snapshot
+
+To restore a backup, go to **Snapshots**, find the snapshot you want to restore, and click **Restore**. You can restore to:
+
+- The same server and database (rollback)
+- A different database on the same server
+- A completely different server (cross-server restore)
+
+## Next Steps
+
+- [Managing Database Servers](./database-servers.md)
+- [Configuring Backups](./backups.md)
+- [Working with Snapshots](./snapshots.md)
+- [Storage Volumes](./volumes.md)
+- [Permissions](./permissions.md)
+
+---
+
+## Database Servers
+
+
+Database servers are the source of your backups. Datacask can connect to and backup MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, and Redis/Valkey servers.
+
+## Supported Versions
+
+Datacask uses standard CLI tools to perform backup and restore operations. The table below shows which database engine versions are supported, based on the CLI tools shipped in the Docker image.
+
+| Engine     | Supported Versions           | CLI Tool                     | Restore |
+|------------|------------------------------|------------------------------|---------|
+| MySQL      | 5.6, 5.7, 8.x, 9.x, 26.x     | `mariadb-dump`               | Yes     |
+| MariaDB    | 10.x, 11.x, 12.x             | `mariadb-dump`               | Yes     |
+| PostgreSQL | 12, 13, 14, 15, 16, 17, 18   | `pg_dump` v16 / v18          | Yes     |
+| SQL Server | 2017, 2019, 2022, Azure SQL  | `sqlpackage` (`.dacpac`)     | Yes     |
+| MongoDB    | 4.2, 4.4, 5.0, 6.0, 7.0, 8.0 | `mongodump` / `mongorestore` | Yes     |
+| SQLite     | 3.x                          | File copy                    | Yes     |
+| Firebird   | 3.x, 4.x, 5.x                | `gbak` v5                    | Yes     |
+| Redis      | 2.8+                         | `redis-cli --rdb`            | No      |
+| Valkey     | 7.2+                         | `redis-cli --rdb`            | No      |
+
+:::info How this works
+- **MySQL / MariaDB**: Datacask ships the MariaDB 11.4 client (`mariadb-dump`), which is wire-protocol compatible with MySQL servers. On MySQL 26.0 and later, stored procedures and functions are left out of the dump: the client reads MySQL's new YY.M version number (9.7 → 26.7) as a MariaDB one and asks for stored packages, which MySQL rejects. Tables, data, views and triggers are unaffected, and the job logs a warning.
+- **PostgreSQL**: Datacask ships both the v16 and the v18 client and runs whichever one matches the server: v16 for servers up to 16, v18 for 17 and later. A dump only replays into a server at least as new as the client that wrote it, so a single v18 client would produce snapshots that no server below 17 could restore, not even the one they came from. Each client dumps from any server back to 9.2. Versions below 12 have reached end-of-life and are not recommended.
+- **SQL Server**: Backups are extracted as `.dacpac` files (schema + table data) using Microsoft's `sqlpackage` CLI (`/Action:Extract`) and re-applied with `/Action:Publish`. Server-bound objects (logins, users, permissions, role memberships) are excluded so backups stay portable across instances and don't fail on Windows-auth principals like `[NT AUTHORITY\SYSTEM]`. Works against on-prem SQL Server 2017+ and Azure SQL Database. Connections use the `pdo_sqlsrv` PHP extension.
+- **MongoDB**: The MongoDB Database Tools (`mongodump` / `mongorestore`) officially support server versions 4.2 through 8.0.
+- **SQLite**: Backups are performed by copying the database file over SFTP. The SQLite 3.x file format has been backwards-compatible since 3.0.0 (2004).
+- **Firebird**: Backups use `gbak` to produce a portable `.fbk` transportable backup file; restore replays it with `gbak -rep`, which replaces the target `.fdb` if one already exists. Datacask ships the Firebird 5 client, which can back up and restore Firebird 3.x, 4.x, and 5.x servers. Each `.fdb` file on the server is its own database, so backup configuration is path-based (like SQLite) rather than name-based.
+- **Redis / Valkey**: `redis-cli --rdb` creates a point-in-time RDB snapshot via the replication protocol. Valkey 7.2+ is supported as a drop-in replacement for Redis. Restore is not supported.
+:::
+
+## Connection Requirements
+
+### MySQL / MariaDB
+
+#### Creating the user
+
+```sql
+CREATE USER 'databasement'@'%' IDENTIFIED BY 'your_secure_password';
+```
+
+#### Permissions for backup and restore (all databases)
+
+```sql
+GRANT SELECT, SHOW VIEW, TRIGGER, LOCK TABLES, PROCESS, EVENT, RELOAD,
+      CREATE, DROP, ALTER, INDEX, INSERT, UPDATE, DELETE, REFERENCES
+ON *.* TO 'databasement'@'%';
+
+FLUSH PRIVILEGES;
+```
+
+:::note[Single database only]
+To restrict the user to a single database, replace `*.*` with `database_name.*`. Note that with single-database permissions, the user cannot create or drop the database itself - you'll need to ensure the target database exists before restoring.
+:::
+
+### PostgreSQL
+
+#### Creating the user
+
+```sql
+CREATE USER databasement WITH PASSWORD 'your_secure_password';
+```
+
+#### Permissions for backup and restore (all databases)
+
+For full backup and restore capabilities, the user needs elevated privileges. The method depends on your PostgreSQL setup:
+
+#### Self-hosted PostgreSQL
+
+```sql
+-- Option 1: Superuser (full access)
+ALTER USER databasement WITH SUPERUSER;
+
+-- Option 2: Create database privilege (can create/drop databases for restore)
+ALTER USER databasement WITH CREATEDB;
+```
+
+#### AWS RDS PostgreSQL
+
+RDS doesn't allow `SUPERUSER`. Grant the `rds_superuser` role instead:
+
+```sql
+GRANT rds_superuser TO databasement;
+```
+
+#### Azure Database for PostgreSQL
+
+Azure uses the `azure_pg_admin` role:
+
+```sql
+GRANT azure_pg_admin TO databasement;
+```
+
+#### Additional grants for non-superuser setups
+
+If not using superuser/rds_superuser/azure_pg_admin, grant access to existing databases:
+
+```sql
+-- Grant ownership or full privileges on the database
+GRANT ALL PRIVILEGES ON DATABASE database_name TO databasement;
+
+-- Connect to the database and grant schema access
+\c database_name
+GRANT ALL PRIVILEGES ON SCHEMA public TO databasement;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO databasement;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO databasement;
+```
+
+:::note[Single database only]
+For single-database access without `CREATEDB`, the target database must already exist. Grant `ALL PRIVILEGES` on that specific database and its schema. The user won't be able to drop/recreate the database during restore - Datacask will drop and recreate tables instead.
+:::
+
+**In-place restores need ownership, not just privileges.** `GRANT ALL PRIVILEGES` does not make the role the owner of existing tables or of the `public` schema, and only an owner may drop or recreate them, so restoring into a database whose objects belong to another role fails with `must be owner of table ...`. Grant `databasement` membership in the role that owns them: PostgreSQL accepts a member of the owning role wherever it requires the owner, so nothing has to change hands.
+
+```sql
+GRANT owning_role TO databasement;
+```
+
+Restoring into an empty database avoids the problem entirely.
+
+### Microsoft SQL Server
+
+SQL Server uses `sqlpackage` to extract and publish `.dacpac` files (schema + table data). Supports on-prem SQL Server 2017+ and Azure SQL Database (default port: 1433). Server-level objects (logins, users, permissions, role memberships) are excluded from the backup.
+
+The login needs `db_owner` on each target database, plus permission to drop and create databases (restore drops the target first). `sysadmin` works; on Azure SQL, use a server admin or grant `dbmanager` on `master`.
+
+:::info Cross-edition restore
+Restoring across editions (e.g. Azure SQL → on-prem) may fail if the source uses features the target doesn't support — a `sqlpackage` limitation.
+:::
+
+### MongoDB
+
+MongoDB uses the `mongodump` and `mongorestore` CLI tools for backup and restore operations.
+
+#### Connection settings
+
+| Field | Description |
+|-------|-------------|
+| Host | MongoDB server hostname or IP |
+| Port | MongoDB port (default: 27017) |
+| Username | Database user (optional for unauthenticated instances) |
+| Password | User password |
+| Auth Source | Authentication database (default: `admin`) |
+
+#### Creating a backup user
+
+```javascript
+use admin
+db.createUser({
+  user: "databasement",
+  pwd: "your_secure_password",
+  roles: [
+    { role: "readAnyDatabase", db: "admin" },
+    { role: "backup", db: "admin" },
+    { role: "restore", db: "admin" }
+  ]
+})
+```
+
+:::note
+The `admin`, `local`, and `config` system databases are automatically excluded from the database list.
+:::
+
+### Redis / Valkey
+
+Redis and Valkey instances are backed up using `redis-cli --rdb`, which creates a point-in-time RDB snapshot of the entire dataset.
+
+#### Connection settings
+
+| Field | Description |
+|-------|-------------|
+| Host | Redis server hostname or IP |
+| Port | Redis port (default: 6379) |
+| Username | ACL username (optional, Redis 6+) |
+| Password | Server password or ACL user password |
+
+:::info Backup only
+Redis/Valkey supports backup only. Restore is not currently supported due to the nature of RDB file imports, which require direct server access.
+:::
+
+### SQLite
+
+SQLite databases are backed up by copying the database file directly. Datacask connects to the remote server via SFTP (through an SSH tunnel) to access the file.
+
+#### Connection settings
+
+| Field | Description |
+|-------|-------------|
+| Database paths | One or more absolute paths to `.sqlite` files on the remote server |
+
+:::note
+SQLite requires an SSH tunnel to access remote database files. Datacask uses SFTP over the tunnel to copy and restore files.
+:::
+
+### Firebird
+
+Firebird databases are backed up using the `gbak` CLI, which connects to the Firebird server over TCP and streams a transportable backup file. Each `.fdb` file on the server is its own database, so the connection is configured with both server credentials and one or more file paths.
+
+#### Connection settings
+
+| Field | Description |
+|-------|-------------|
+| Host | Firebird server hostname or IP |
+| Port | Firebird port (default: 3050) |
+| Username | Firebird user (default: `SYSDBA`) |
+| Password | Server password |
+| Database paths | One or more absolute paths to `.fdb` files on the server |
+
+#### Creating a backup user
+
+`SYSDBA` works out of the box. For a dedicated backup account:
+
+```sql
+CREATE USER databasement PASSWORD 'your_secure_password';
+GRANT RDB$ADMIN TO databasement;
+```
+
+:::note Restore replaces the target file
+Restore is performed with `gbak -rep`, which writes a fresh `.fdb` at the target path and replaces an existing file at that path if one is present. The user supplies the destination path during restore.
+:::
+
+## Browsing Data with Adminer
+
+Datacask can launch [Adminer](https://www.adminer.org/) directly against a registered server to inspect schema and run queries from the browser. Supported for **MySQL**, **PostgreSQL**, and **SQLite** servers that connect without an SSH tunnel.
+
+Access is controlled by the `use-adminer` ability, held by **Admin** in the seeded defaults. A Super Admin can grant or revoke it on any role under **Configuration → Roles**. For roles that hold the ability, a *Browse* action appears on compatible servers in the Database Servers list and opens Adminer pre-authenticated with the server's stored credentials.
+
+## Troubleshooting Connection Issues
+
+### Common Connection Issues
+
+| Error              | Solution                                                   |
+|--------------------|------------------------------------------------------------|
+| Connection refused | Verify host, port, and that the database server is running |
+| Access denied      | Check username and password                                |
+| Unknown host       | Verify the hostname is correct and DNS is resolving        |
+| Connection timeout | Check firewall rules and network connectivity              |
+
+### Docker Networking
+
+When running Datacask in Docker and connecting to databases in other containers, you need to ensure network connectivity between them.
+
+#### Containers in Different docker-compose Projects
+
+By default, each docker-compose project creates its own isolated network. To connect to a database in another project:
+
+**Option 1: Use an external network (recommended)**
+
+1. Create a shared network:
+   ```bash
+   docker network create shared-db-network
+   ```
+
+2. In your application database's `docker-compose.yml`, add the external network:
+   ```yaml
+   services:
+     mysql:
+       # ... your config
+       networks:
+         - default
+         - shared-db-network
+
+   networks:
+     shared-db-network:
+       external: true
+   ```
+
+3. In Datacask's `docker-compose.yml`, add the same network:
+   ```yaml
+   services:
+     app:
+       # ... your config
+       networks:
+         - default
+         - shared-db-network
+     worker:
+       # ... your config
+       networks:
+         - default
+         - shared-db-network
+
+   networks:
+     shared-db-network:
+       external: true
+   ```
+
+4. Restart both projects and use the container name as the host (e.g., `mysql`).
+
+**Option 2: Connect to an existing network**
+
+Find the network name of your database container:
+```bash
+docker network ls
+docker inspect <container_name> | grep -A 20 "Networks"
+```
+
+Then connect Datacask to that network:
+```yaml
+networks:
+  other-project_default:
+    external: true
+```
+
+#### Standalone Docker Containers (no docker-compose)
+
+For containers started with `docker run`:
+
+1. Create a network if you don't have one:
+   ```bash
+   docker network create my-network
+   ```
+
+2. Start your database container on that network:
+   ```bash
+   docker run -d --name mysql --network my-network mysql:8
+   ```
+
+3. Connect Datacask to the same network:
+   ```bash
+   docker network connect my-network databasement-app
+   ```
+
+4. Use the container name (`mysql`) as the host in Datacask.
+
+#### Using Host Network Mode
+
+If your database is accessible on the host machine (e.g., installed directly or exposed via port mapping), you can use host network mode:
+
+```yaml
+services:
+  app:
+    network_mode: host
+```
+
+Then use `localhost` or `127.0.0.1` as the host. Note that this disables Docker's network isolation.
+
+#### Connecting to Host Machine's Database
+
+If your database runs directly on the host machine (not in Docker):
+
+| Platform      | Host to use                                    |
+|---------------|------------------------------------------------|
+| Linux         | `172.17.0.1` or `host.docker.internal` (Docker 20.10+) |
+| macOS/Windows | `host.docker.internal`                         |
+
+Example: If MySQL is running on your laptop on port 3306, use `host.docker.internal:3306`.
+
+### Firewall Considerations
+
+Ensure your firewall allows connections:
+
+- **Docker networks**: Usually handled automatically
+- **Host firewall (iptables/ufw)**: May need rules for Docker bridge networks
+- **Cloud firewalls (AWS Security Groups, etc.)**: Add inbound rules for the database port
+
+## SSH Tunnel
+
+Connect to databases that aren't directly reachable from Datacask — in private networks, behind a bastion/jump host, or on a remote Docker host whose database ports aren't exposed. Datacask opens the tunnel before each backup/restore and closes it afterward, with credentials encrypted at rest.
+
+See [SSH Tunnel](./ssh-tunnel.md) for configuration and for backing up databases on a remote host.
+
+---
+
+## Storage Volumes
+
+
+Storage volumes are the destinations where your backup files are stored. Datacask supports multiple storage backends to fit your infrastructure needs.
+
+## Volume Types
+
+### Local Storage
+
+Local volumes store backups on the filesystem where Datacask is running. This is the simplest option for single-server setups.
+
+| Field | Description |
+|-------|-------------|
+| **Path** | Absolute path to the backup directory |
+
+:::info
+Ensure the Datacask container has write access to the specified path. You may need to mount a volume when running Docker:
+```bash
+docker run -v /path/on/host:/backups registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask
+```
+
+In multi-container setups (Docker Compose, Kubernetes), where the web server and the queue worker run as separate containers, the backup path must be mounted into **both** — the worker writes snapshots, and the web container reads them to serve downloads. The path (and every directory above it) must also be readable by the web container's application user: the worker often runs as root, so a host directory with `0700` root-only permissions lets backups succeed while downloads fail with a 404.
+:::
+
+### S3 Storage
+
+S3 volumes store backups in AWS S3 or any S3-compatible object storage (MinIO, DigitalOcean Spaces, Backblaze B2, etc.). All credentials and settings are configured per-volume.
+
+| Field | Description |
+|-------|-------------|
+| **Bucket** | S3 bucket name |
+| **Prefix** | Optional path prefix within the bucket (e.g., `backups/production/`) |
+| **Region** | AWS region where the bucket is located (e.g., `us-east-1`) |
+| **Access Key ID** | AWS access key (optional — see below) |
+| **Secret Access Key** | AWS secret key (optional — see below) |
+
+**Advanced settings** (expand in the form):
+
+| Field | Description |
+|-------|-------------|
+| **Custom Endpoint** | For S3-compatible storage (MinIO, DigitalOcean Spaces, etc.) |
+| **Public Endpoint** | Public URL for presigned download links when the internal endpoint differs |
+| **Use Path-Style Endpoint** | Required for most S3-compatible providers (MinIO, etc.) |
+| **IAM Role ARN** | Assume this IAM role via STS before accessing S3 |
+| **Role Session Name** | Identifier for the assumed role session (default: `databasement`) |
+| **STS Endpoint** | Custom STS endpoint for role assumption |
+
+:::tip
+Credentials are optional. When left blank, the AWS SDK uses its default credential chain: environment variables, EC2/ECS instance roles, and EKS IRSA. This allows deployments on AWS infrastructure to work without explicit keys.
+:::
+
+:::tip
+The secret access key is encrypted at rest in the database using Laravel's encryption. It is never stored in plain text.
+:::
+
+### SFTP Storage
+
+SFTP volumes store backups on a remote server via SSH File Transfer Protocol. This is ideal for storing backups on a dedicated backup server or NAS.
+
+| Field | Description |
+|-------|-------------|
+| **Host** | SFTP server hostname or IP address |
+| **Port** | SSH port (default: 22) |
+| **Username** | SSH username |
+| **Password** | SSH password |
+| **Root Directory** | Base path on the remote server (e.g., `/backups`) |
+| **Connection Timeout** | Timeout in seconds (default: 10) |
+
+:::note
+Only password authentication is currently supported. SSH key authentication is planned for a future release.
+:::
+
+:::tip
+The password is encrypted at rest in the database using Laravel's encryption. It is never stored in plain text.
+:::
+
+### FTP Storage
+
+FTP volumes store backups on a remote FTP server. Both standard FTP and FTPS (FTP over SSL/TLS) are supported.
+
+| Field | Description |
+|-------|-------------|
+| **Host** | FTP server hostname or IP address |
+| **Port** | FTP port (default: 21) |
+| **Username** | FTP username |
+| **Password** | FTP password |
+| **Root Directory** | Base path on the remote server (e.g., `/backups`) |
+| **Enable SSL** | Use FTPS (FTP over SSL/TLS) for encrypted transfers |
+| **Passive Mode** | Use passive mode for data connections (recommended for most setups) |
+| **Connection Timeout** | Timeout in seconds (default: 90) |
+
+:::warning
+Standard FTP transmits credentials and data in plain text. Enable SSL for secure transfers, or prefer SFTP for better security.
+:::
+
+:::tip
+The password is encrypted at rest in the database using Laravel's encryption. It is never stored in plain text.
+:::
+
+### Samba / SMB Storage
+
+SMB volumes store backups on a Windows file share or a Samba server (common on NAS appliances) — natively, without mounting anything on the host.
+
+| Field | Description |
+|-------|-------------|
+| **Host** | SMB server hostname or IP address |
+| **Share** | The share name (e.g., `backups`) |
+| **Username** | SMB username |
+| **Password** | SMB password |
+| **Domain / Workgroup** | Domain or workgroup (optional, default: `WORKGROUP`) |
+| **Root Directory** | Base path inside the share (e.g., `/databasement`) |
+
+:::note
+SMB support is built into the Datacask Docker image and connects over SMB2/SMB3 — no host mounts or extra packages needed.
+:::
+
+:::tip
+The password is encrypted at rest in the database using Laravel's encryption. It is never stored in plain text.
+:::
+
+### NFS Storage
+
+NFS does not have a dedicated volume type because there is no NFS client at the application layer — NFS is mounted by the operating system. To use an NFS export as a backup destination, **mount it where Datacask runs and point a [Local](#local-storage) volume at the mount path**.
+
+For example, with Docker Compose:
+
+```yaml
+services:
+  app:
+    volumes:
+      - backups-nfs:/backups
+
+volumes:
+  backups-nfs:
+    driver: local
+    driver_opts:
+      type: nfs
+      o: "addr=nas.example.com,rw,nfsvers=4"
+      device: ":/export/backups"
+```
+
+Then create a **Local** volume with path `/backups`. The same approach works for mounting an SMB share via CIFS if you prefer mounting over the native SMB volume type.
+
+## Connection Testing
+
+Before saving a volume, use the **Test Connection** button to verify:
+- The storage location is accessible
+- Write permissions are configured correctly
+- Credentials are valid (for S3/SFTP/FTP)
+
+The test creates a small temporary file, reads it back to verify integrity, then deletes it.
+
+## Volume Immutability
+
+Once a volume has backup snapshots associated with it, the storage configuration becomes read-only. This protects backup integrity by ensuring snapshots always point to their original storage location.
+
+You can still rename the volume, but the storage type and configuration cannot be changed. To use different storage settings, create a new volume.
+
+---
+
+## Backups
+
+
+Datacask allows you to create on-demand backups of your databases. Backups are processed asynchronously, so you can continue using the application while they run.
+
+## How Backups Work
+
+When you create a backup, Datacask:
+
+1. Connects to the database server (via SSH tunnel if configured)
+2. Runs the appropriate dump command for the database type
+3. Compresses the output with gzip
+4. Transfers the compressed file to the selected storage volume
+5. Creates a snapshot record with metadata
+
+### Backup Commands
+
+Datacask uses native database tools for reliable backups:
+
+**MySQL/MariaDB:**
+```bash
+mariadb-dump --routines --add-drop-table --complete-insert --hex-blob --quote-names --skip_ssl \
+  --host='...' --port='...' --user='...' --password='...' 'database_name' > dump.sql
+```
+
+**PostgreSQL:**
+```bash
+PGPASSWORD='...' pg_dump --clean --if-exists --no-owner --no-privileges --quote-all-identifiers \
+  --host='...' --port='...' --username='...' 'database_name' -f dump.sql
+```
+
+**SQLite:**
+```bash
+sqlite3 '/path/to/database.sqlite' ".backup 'dump.db'"
+```
+
+This creates a consistent snapshot and is safe for databases running in WAL mode.
+
+**Firebird:**
+```bash
+gbak -b -g -user '...' -password '...' '/path/to/source.fdb' '/path/to/dump.fbk'
+```
+
+**MongoDB:**
+```bash
+mongodump --host='...' --port='...' --username='...' --password='...' \
+  --authenticationDatabase='admin' --db='database_name' --archive=dump.archive
+```
+
+**Redis/Valkey:**
+```bash
+redis-cli -h '...' -p '...' -a '...' --no-auth-warning --rdb dump.rdb
+```
+
+All dumps are then compressed with gzip before being transferred to the storage volume.
+
+## Failed Backups
+
+If a backup fails, check:
+
+1. **Database connectivity**: Can Datacask still connect to the server?
+2. **Disk space**: Is there enough space on the storage volume?
+3. **Permissions**: Does the database user have backup privileges?
+4. **Timeout**: Large databases may need more time
+
+Failed backup reasons are logged and visible in the snapshot details.
+
+## Retention Policies
+
+Retention policies control how long backups are kept before being automatically deleted. Datacask offers two retention strategies:
+
+### Simple (Days-Based)
+
+The simplest option: keep all backups for a specified number of days.
+
+**Example:** With `retention_days = 30`, any backup older than 30 days is automatically deleted.
+
+| Day | Backups Kept |
+|-----|--------------|
+| 1-30 | All backups |
+| 31+ | Deleted |
+
+**Best for:** Short-term backup needs, development environments, or when storage cost isn't a concern.
+
+### GFS (Grandfather-Father-Son)
+
+A tiered retention strategy that keeps recent backups for quick recovery while preserving older snapshots for long-term archival — without keeping every single backup.
+
+**How it works:**
+
+| Tier | What it keeps | Example |
+|------|---------------|---------|
+| **Daily** (Son) | The N most recent backups | Keep last 7 backups |
+| **Weekly** (Father) | 1 backup per week for N weeks | Keep 1/week for 4 weeks |
+| **Monthly** (Grandfather) | 1 backup per month for N months | Keep 1/month for 12 months |
+
+**Example with default values (7 daily, 4 weekly, 12 monthly):**
+
+After running daily backups for a year, you'll have approximately:
+- **7 recent backups** (last 7 days)
+- **4 weekly backups** (one from each of the past 4 weeks)
+- **12 monthly backups** (one from each of the past 12 months)
+
+**Total: ~23 backups** instead of 365 — saving significant storage while maintaining recovery points across the entire year.
+
+```
+Timeline visualization:
+
+Today ◄─────────────────────────────────────────────── 1 year ago
+  │                                                        │
+  ├── Daily ──┤ (7 backups)                                │
+  │           │                                            │
+  ├── Weekly ─────────┤ (4 backups)                        │
+  │                   │                                    │
+  └── Monthly ─────────────────────────────────────────────┘ (12 backups)
+```
+
+**Best for:** Production environments, compliance requirements, or when you need long-term recovery options without excessive storage costs.
+
+:::info Per-Database Retention
+Retention policies are applied **per database**, not per server. If you backup 3 databases with GFS (7 daily), each database keeps its own 7 most recent backups — totaling 21 backups across all databases.
+:::
+
+### Choosing a Retention Policy
+
+| Scenario | Recommended Policy |
+|----------|-------------------|
+| Development/testing | Simple: 7-14 days |
+| Small production app | Simple: 30 days |
+| Business-critical data | GFS: 7d/4w/12m |
+| Compliance requirements | GFS: 14d/8w/24m |
+
+:::tip
+You can disable any GFS tier by leaving it empty. For example, setting only "Monthly: 12" keeps just one backup per month for a year.
+:::
+
+## Best Practices
+
+### Before Production Backups
+
+1. **Test the connection** before creating backups
+2. **Verify restore** by testing a restore to a development server
+3. **Monitor disk space** on your storage volumes
+
+### Backup Sizing
+
+Compressed backup sizes vary, but as a rough guide:
+- A 1GB database typically compresses to 100-300MB
+- Text-heavy data compresses better than binary data
+
+### Security Considerations
+
+- Use dedicated backup users with minimal required privileges
+- Store backups in secure, encrypted storage when possible
+- Regularly test your restore process
+
+---
+
+## Snapshots
+
+
+Snapshots are the backup files created when you backup a database. They contain all the data needed to restore your database to a specific point in time.
+
+## File Verification
+
+Datacask verifies daily that backup files still exist on their storage volumes. Missing files are surfaced on the dashboard and in the jobs index with a "File missing" warning.
+
+You can also trigger verification manually from the dashboard.
+
+See [Backup Configuration](../self-hosting/configuration/backup.md) for `BACKUP_VERIFY_FILES` and `BACKUP_VERIFY_FILES_CRON` settings.
+
+## Restore Process
+
+When you restore a snapshot, Datacask:
+
+1. Downloads the snapshot from storage
+2. Decompresses the backup file
+3. Connects to the target database server
+4. Drops and recreates the target database (if it exists)
+5. Restores the data using native database tools
+
+### Restore Commands
+
+**MySQL/MariaDB:**
+```bash
+mariadb --host='...' --port='...' --user='...' --password='...' --skip_ssl \
+  'database_name' -e "source /path/to/dump.sql"
+```
+
+**PostgreSQL:**
+```bash
+PGPASSWORD='...' psql --host='...' --port='...' --username='...' \
+  'database_name' -f '/path/to/dump.sql'
+```
+
+**SQLite:**
+```bash
+cp '/path/to/snapshot' '/path/to/database.sqlite'
+```
+
+**Firebird:**
+```bash
+gbak -rep -user '...' -password '...' '/path/to/dump.fbk' 'host/port:/path/to/target.fdb'
+```
+
+**MongoDB:**
+```bash
+mongorestore --host='...' --port='...' --username='...' --password='...' \
+  --authenticationDatabase='admin' --archive='/path/to/dump.archive' \
+  --nsFrom='source_db.*' --nsTo='target_db.*' --drop
+```
+
+:::info
+Redis/Valkey restore is not currently supported. RDB file imports require direct server access.
+:::
+
+All snapshots are decompressed with `gzip -d` before restore.
+
+## Scheduled Restores
+
+You can replay the **latest completed snapshot** of a source database onto a target server on a recurring schedule — useful for keeping a staging or QA database refreshed from production.
+
+A scheduled restore is configured with:
+
+- **Source server** (and database name, unless the type is whole-instance like SQLite or Redis)
+- **Target server** and destination database name/path
+- **Schedule** — reuses the same cron schedules defined under Configuration → Backup
+
+On each run, Datacask picks the most recent completed snapshot of the source database and runs the normal [restore process](#restore-process) against the target. Source and target must be of the same database type.
+
+---
+
+## Organizations
+
+
+Datacask supports multi-organization setups, allowing you to isolate resources (database servers, volumes, agents, snapshots) between teams or projects.
+
+## Concepts
+
+- Every resource belongs to exactly one organization
+- Users can belong to multiple organizations with different roles in each
+- A **default organization** is created automatically on first install
+- Super admins can create and manage additional organizations
+
+## User Roles
+
+Roles are **per-organization**. A user can be an admin in one org and a viewer in another.
+
+| Role       | Scope                                                        |
+|------------|--------------------------------------------------------------|
+| **Super Admin** | Global. Full access to all organizations and settings.  |
+| **Admin**  | Per-org. Can manage users and all resources within the org.  |
+| **Member** | Per-org. Can manage resources but not users.                 |
+| **Viewer** | Per-org. Read-only access.                                   |
+
+Super admin is a flag on the user account, not an org role. It grants access everywhere regardless of membership.
+
+## Switching Organizations
+
+Use the organization switcher in the sidebar to change your active context. All pages (dashboard, servers, volumes, snapshots) reflect the selected organization. The switcher is visible when you belong to more than one organization or are a super admin.
+
+On switch, you are redirected to the dashboard to avoid stale resource URLs. Your selection is persisted in a cookie and restored on next login.
+
+## Managing Organizations
+
+Super admins can manage organizations from **Configuration > Organizations**:
+
+- Create new organizations
+- Rename existing organizations
+- Delete empty organizations (all servers, volumes, and agents must be removed first)
+
+The default organization cannot be renamed or deleted. Organization names must be unique.
+
+**Servers across organizations** opens a read-only list of every database server in the
+installation with its latest backup status, so a super admin can spot a stalled backup without
+switching organizations one by one. Opening a server from that list switches the current
+organization to the one owning it.
+
+## User Management
+
+The **Users** page shows members of the currently selected organization.
+
+Admins (org or super) can add users from the **Users > Add User** page:
+
+- **Invite new user** — Creates a new account with an invitation link. The user joins the current organization with the selected role.
+- **Add existing user** — Adds a user who already has an account (in another org) to the current organization. Select the user and assign a role.
+
+**Delete** permanently removes the user account. **Remove from org** detaches the user from the current organization but keeps their account for other orgs.
+
+| Scenario | Org Admin | Super Admin |
+|---|---|---|
+| User in **one** org | Delete | Delete |
+| User in **multiple** orgs | Remove from org | Delete or Remove from org |
+
+- Admins cannot delete or remove themselves
+- Org admins cannot act on super admin users
+- The last super admin cannot be deleted
+
+## API Usage
+
+API requests target an organization using the `?org_id=` query parameter (by organization ID):
+
+```
+GET /api/v1/database-servers?org_id=01JA2B3C4D5E6F7G8H9J0KMNPQ
+```
+
+Alternatively, pass the `X-Organization-Id` header with the same value. If neither is provided, the default organization is used.
+
+You can find the organization ID in **Configuration > Organizations**.
+
+## Data Isolation
+
+Each organization has its own:
+
+- Database servers and SSH configs
+- Storage volumes
+- Snapshots and backup jobs
+- Agents
+
+Shared across all organizations:
+
+- User accounts and API tokens
+- Global configuration (application, authentication, backup, notification settings)
+- Backup schedules
+
+A backup's database server and volume must belong to the same organization. Cross-org restore is not allowed — the source snapshot and target server must be in the same org.
+
+## Agents
+
+Agents belong to a single organization. They only execute jobs for servers within their assigned organization.
+
+## OAuth / OIDC
+
+Auto-created OAuth users join the default organization by default. Set the `OAUTH_DEFAULT_ORGANIZATION_ID` environment variable to assign them to a different org instead.
+
+## CLI Commands
+
+Artisan commands (`backup:run`, `cleanup:snapshots`, `verify:files`) operate globally across all organizations. They bypass org scoping by design.
+
+## Fresh Install
+
+On first install:
+
+1. A **Default** organization is created automatically
+2. The first registered user becomes a super admin, attached to the default org as admin
+3. Additional organizations can be created from Configuration
+
+---
+
+## Permissions
+
+
+Datacask uses role-based access control built on [Bouncer](https://github.com/JosephSilber/bouncer). A **role** grants a set of **abilities**. Roles and their abilities are **global** (shared across the whole application); only the **assignment** of a role to a user is **per organization**.
+
+## Roles are per organization
+
+Each user has one role **per organization** they belong to, so the same person can be an **Admin** in one org and a **Viewer** in another. Roles are assigned from the **Users** screen of the organization you are currently working in (requires the `manage-users` ability). See [Organizations](./organizations.md) for multi-org setup.
+
+Viewing resources (servers, volumes, snapshots, agents, schedules, restores) needs no ability — read access comes with membership. Everything else is gated by the abilities below.
+
+## Super admins
+
+The first/owner user is a **super admin**. Super admins:
+
+- Bypass every ability check, in **every** organization.
+- Manage the globally scoped settings that no ability covers: **authentication / SSO**, **role management** (Configuration → Roles), and **organizations**.
+- Are the only ones who can grant **super admin** to another user.
+
+Everyone can *view* those global screens read-only; only super admins can change them.
+
+## Abilities
+
+The catalogue is fixed and code-defined. Toggle any ability on any role under **Configuration → Roles** — changes apply immediately, everywhere.
+
+| Ability | Grants |
+|---------|--------|
+| `run-backups` | Run backups on demand |
+| `download-snapshots` | Download snapshot files |
+| `delete-snapshots` | Delete snapshots and cancel pending backup jobs |
+| `operate-restores` | Restore from snapshots and manage scheduled restores |
+| `use-adminer` | Open the Adminer database browser |
+| `manage-database-servers` | Create, edit and delete database server connections |
+| `manage-volumes` | Create, edit and delete storage volumes |
+| `manage-agents` | Create, edit, delete and regenerate tokens for remote agents |
+| `manage-backup-settings` | Configure backup settings and schedules; run cleanup and verification |
+| `manage-notifications` | Create, edit, delete and test notification channels |
+| `manage-users` | Invite, edit and remove users in the organization |
+
+:::note Abilities apply to the whole organization
+An ability covers **all** resources of its type in the organization — for example, `manage-database-servers` grants access to *every* server in the org, not a specific one. Narrowing an ability to a single resource (such as letting someone manage just one database) is not possible today, but may land in a future release.
+:::
+
+:::note `manage-users` is the most powerful org ability
+Its holder can grant any ability to anyone in the org. Give `manage-users` only to people you trust with the whole organization.
+:::
+
+## Default role abilities
+
+These are the **seeded defaults** for the built-in roles. They are fully editable at runtime, and you can create custom roles or grant extra abilities to individual users — so real access may differ.
+
+| Ability | Viewer | Operator | Member | Admin |
+|---------|:------:|:--------:|:------:|:-----:|
+| `run-backups` | ❌ | ✅ | ✅ | ✅ |
+| `download-snapshots` | ❌ | ✅ | ✅ | ✅ |
+| `delete-snapshots` | ❌ | ❌ | ✅ | ✅ |
+| `operate-restores` | ❌ | ✅ | ✅ | ✅ |
+| `use-adminer` | ❌ | ❌ | ✅ | ✅ |
+| `manage-database-servers` | ❌ | ❌ | ✅ | ✅ |
+| `manage-volumes` | ❌ | ❌ | ✅ | ✅ |
+| `manage-agents` | ❌ | ❌ | ✅ | ✅ |
+| `manage-backup-settings` | ❌ | ❌ | ❌ | ✅ |
+| `manage-notifications` | ❌ | ❌ | ❌ | ✅ |
+| `manage-users` | ❌ | ❌ | ❌ | ✅ |
+
+In short: **Viewer** reads only; **Operator** also runs backups, restores and downloads; **Member** adds full resource and config management; **Admin** adds user management and backup/notification settings.
+
+## User deletion
+
+- **Super admins** can delete any user, except themselves and the last super admin.
+- **Org admins** (`manage-users`) can delete a user only if that user is not a super admin and belongs to **only** their organization. If the user belongs to multiple orgs, remove them from the org instead.
+
+---
+
+## REST API
+
+
+Datacask provides a REST API for managing database servers, backups, snapshots, and storage volumes programmatically.
+
+## Authentication
+
+All API requests require a Bearer token. Create one from **Settings → API Tokens** in the Datacask UI.
+
+Include the token in the `Authorization` header:
+
+```
+Authorization: Bearer YOUR_TOKEN
+```
+
+## API Documentation
+
+Interactive API documentation is available at `/docs/api` on your Datacask instance. It is auto-generated from the codebase using [Scramble](https://scramble.dedoc.co/) and includes a "Try It" feature for testing endpoints directly.
+
+---
+
+## MCP Server
+
+
+Datacask includes a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants manage your database backups through natural language.
+
+## What is MCP?
+
+MCP is an open protocol that allows AI clients (Claude Code, Cursor, VS Code Copilot, etc.) to discover and call tools exposed by your application. Instead of clicking through the UI, you can say things like:
+
+- "List my database servers"
+- "Back up the production MySQL server"
+- "Restore the latest snapshot to staging"
+
+The MCP server wraps the same services that power the web UI and REST API, so behavior is consistent across all interfaces.
+
+## Available Tools
+
+| Tool | Description | Destructive? |
+|------|-------------|:---:|
+| **list-database-servers** | List all registered servers with connection details and backup config. Optionally filter by database type. | No |
+| **list-snapshots** | List backup snapshots, optionally filtered by server. Returns most recent first. | No |
+| **trigger-backup** | Trigger an on-demand backup for a server. Returns snapshot IDs and job IDs for status tracking. | No |
+| **trigger-restore** | Restore a snapshot to a target server. Drops and recreates the target database. | **Yes** |
+| **get-job-status** | Check the status of a backup or restore job (pending, running, completed, failed). | No |
+
+## Setup
+
+The MCP server is available at `/mcp`, protected by [Sanctum](https://laravel.com/docs/sanctum) token authentication.
+
+### 1. Create an API Token
+
+Go to **Settings → API Tokens** in the Datacask UI and create a new token.
+
+### 2. Configure Your AI Client
+
+Add the following to your MCP client configuration (e.g., `~/.claude/settings.json` or `.mcp.json` for Claude Code, `mcp.json` for Cursor):
+
+```json
+{
+  "mcpServers": {
+    "databasement": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://your-databasement-instance.com/mcp",
+        "--header",
+        "Authorization: Bearer YOUR_SANCTUM_TOKEN"
+      ]
+    }
+  }
+}
+```
+
+Replace the URL with your Datacask instance address and the token with the one generated in step 1.
+
+Tools will appear natively in your AI client (e.g., as `mcp__databasement__trigger-backup-tool` in Claude Code).
+
+:::note
+[mcp-remote](https://www.npmjs.com/package/mcp-remote) requires Node.js to be installed. It bridges the HTTP transport to stdio, which is supported by all MCP clients.
+:::
+
+---
+
+## Development Guide
+
+
+This guide covers setting up a local development environment for contributing to Datacask.
+
+## Requirements
+
+- PHP 8.4+
+- Composer
+- Node.js 20+ & npm
+- Docker & Docker Compose
+
+## Quick Start
+
+### 1. Clone and Setup
+
+```bash
+git clone https://github.com/hjdyzy/datacask.git
+cd datacask
+make setup
+```
+
+This will:
+- Install Composer dependencies
+- Run database migrations
+- Install npm dependencies
+- Build frontend assets
+
+You should be ready to go!
+
+Open http://localhost:2226 in your browser to view the app.
+
+### 2. Start Development Environment
+
+```bash
+make start
+```
+
+This starts all Docker services:
+- **php** — FrankenPHP server on http://localhost:2226
+- **queue** — Queue worker for async backup/restore jobs
+- **mysql** — MySQL 8.0 on port 3306
+- **postgres** — PostgreSQL 16 on port 5432
+
+Test database credentials: `admin` / `admin` / `testdb`
+
+## Available Commands
+
+All PHP commands run through Docker. Use the Makefile targets or `docker compose exec app <command>`.
+
+### Testing
+
+```bash
+make test                           # Run all tests
+make test-filter FILTER=ServerTest  # Run specific tests
+make test-coverage                  # Run with coverage report
+```
+
+### Code Quality
+
+```bash
+make lint-fix     # Auto-fix code style with Laravel Pint
+make lint-check   # Check code style without fixing
+make phpstan      # Run PHPStan static analysis
+```
+
+### Database
+
+```bash
+make migrate            # Run pending migrations
+make migrate-fresh      # Drop all tables and re-migrate
+make migrate-fresh-seed # Fresh migration with seeders
+make db-seed            # Run database seeders
+```
+
+### Assets
+
+```bash
+npm run build   # Build production assets
+npm run dev     # Start Vite dev server (HMR)
+make build      # Alternative: build via Makefile
+```
+
+### Docker Services
+
+```bash
+make start                    # Start all services
+docker compose logs -f        # View logs from all services
+docker compose logs -f queue  # View queue worker logs
+docker compose restart queue  # Restart queue worker
+docker compose down           # Stop all services
+```
+
+## OAuth / SSO Testing
+
+Datacask includes a [Dex](https://dexidp.io/) OIDC server for local OAuth testing. The Dex service is commented out by default in `docker-compose.yml`.
+
+### 1. Add Hosts Entry
+
+The Dex server uses a custom hostname that must resolve both from your browser and from within Docker containers:
+
+```bash
+echo "127.0.0.1 dex-local" | sudo tee -a /etc/hosts
+```
+
+### 2. Enable Dex Service
+
+Uncomment the `dex` service in `docker-compose.yml`:
+
+### 3. Start Dex
+
+```bash
+docker compose up dex -d
+```
+
+### 4. Configure Environment
+
+Add to your `.env.local`:
+
+```env
+OAUTH_OIDC_ENABLED=true
+OAUTH_OIDC_CLIENT_ID=databasement
+OAUTH_OIDC_CLIENT_SECRET=databasement-secret
+OAUTH_OIDC_BASE_URL=http://dex-local:5556/dex
+OAUTH_OIDC_LABEL=SSO
+```
+
+### Test User
+
+| Email | Password |
+|-------|----------|
+| `user@databasement.com` | `databasement` |
+
+### Testing Flow
+
+1. Ensure hosts entry is added (step 1)
+2. Start Dex: `docker compose up dex -d`
+3. Visit the login page at `http://localhost:2226/login`
+4. Click "Continue with SSO"
+5. Enter test credentials: `user@databasement.com` / `databasement`
+6. You'll be redirected back and logged in
+
+### OAuth Behavior Notes
+
+- **New users**: Created automatically with the role defined by `OAUTH_DEFAULT_ROLE`
+- **Existing users**: When an existing user logs in via OAuth (matching email), their account is linked and their password is cleared
+- **OAuth-only users**: Cannot use password login — they must use the OAuth button
+- **Settings access**: OAuth-only users don't see Password or Two-Factor settings (managed by the OAuth provider)
+
+## Running an Agent Locally
+
+A remote agent polls the app over HTTPS and runs backups on its own network (for servers the app can't reach directly). For local development you can run an agent straight from your working copy — no image rebuild — by bind-mounting the repo into the dev PHP image.
+
+### 1. Create an agent and copy its token
+
+Create one in the UI (**Agents → Add Agent**), or via tinker:
+
+```bash
+docker compose exec --user application app php artisan tinker --execute '
+$org = App\Models\Organization::where("is_default", true)->first();
+$agent = App\Models\Agent::create(["name" => "local-test-agent", "organization_id" => $org->id]);
+echo $agent->createToken("agent")->plainTextToken.PHP_EOL;
+'
+```
+
+### 2. Run the agent
+
+Attach it to the compose network so it can reach the app, databases, and the S3 (rustfs) volume by service name. The `-v "$(pwd)":/app` mount runs your local code (dev only):
+
+```bash
+docker run -d --rm \
+  --network databasement_default \
+  -v "$(pwd)":/app \
+  -e DATABASEMENT_URL='http://app:2226' \
+  -e DATABASEMENT_AGENT_TOKEN='<paste-token>' \
+  --name datacask-agent \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask-php:latest \
+  php artisan agent:run
+
+docker logs -f databasement-agent   # follow output
+docker rm -f databasement-agent     # stop the agent
+```
+
+When `DATABASEMENT_URL` is set the image runs in agent mode (it execs `php artisan agent:run` and needs zero database configuration). Setting it explicitly here lets us also override the startup command for the bind-mount workflow.
+
+### 3. Back up through the agent
+
+Assign the agent to a database server (set `agent_id`) and run a backup. Agent-backed servers **cannot** use a local volume — use the seeded **RustFS (S3)** volume. The agent then claims the job, dumps the database, and uploads it to the volume.
+
+:::note
+Use `--network databasement_default` so `app:2226`, `postgres:5432`, and `rustfs:9000` resolve by name. Alternatively use `--network host` with `DATABASEMENT_URL=http://localhost:2226`, but then the server host and S3 endpoint must also be reachable from the host network.
+:::
+
+## SMB Volume Testing
+
+Datacask includes a commented-out Samba service in `docker-compose.yml` for testing SMB volumes locally.
+
+### 1. Enable the Samba Service
+
+Uncomment the `samba` service (and the `samba-data` entry in the `volumes` block) in `docker-compose.yml`, then start it:
+
+```bash
+docker compose up samba -d
+```
+
+### 2. Create an SMB Volume
+
+Create a volume in the UI (**Volumes → Add Volume → Samba / SMB**) with:
+
+| Field | Value |
+|-------|-------|
+| Host | `samba` |
+| Share | `backups` |
+| Username | `smbuser` |
+| Password | `smbpass` |
+| Domain / Workgroup | *(leave empty)* |
+| Root Directory | `/databasement` |
+
+Use **Test Connection** to verify, then run a backup targeting the volume. Files land in the `samba-data` Docker volume under the share:
+
+```bash
+docker compose exec samba ls -la /shares/backups/databasement
+```
+
+:::note
+The share is configured with `force user = root` so writes succeed regardless of the Docker volume's ownership. The app container reaches the server by service name (`samba`) over the compose network.
+:::
+
+## Git Hooks
+
+Pre-commit hooks (via Husky) automatically run:
+
+1. `make lint-fix` — Auto-format code with Laravel Pint
+2. `make test` — Run all Pest tests
+
+Ensure tests pass before committing.
+
+## Architecture Overview
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Backend | Laravel 12, PHP 8.4+ |
+| Frontend | Livewire, Mary UI, daisyUI, Tailwind CSS 4 |
+| Testing | Pest PHP |
+| Database | SQLite (dev), supports MySQL/PostgreSQL/MariaDB |
+| Auth | Laravel Fortify with 2FA support |
+
+### Key Models
+
+- **DatabaseServer** — Database connection configurations
+- **Volume** — Storage destinations (local, S3)
+- **Backup** — Backup configurations (schedule, retention, volume)
+- **Snapshot** — Individual backup snapshots with metadata
+- **BackupJob** — Tracks backup/restore job execution and logs
+
+### Key Services
+
+- **BackupTask** — Executes database dumps, compression, and storage
+- **RestoreTask** — Downloads, decompresses, and restores snapshots
+- **DatabaseProvider** — Creates database handlers, tests connections, lists databases
+- **SshTunnelService** — Establishes SSH tunnels for database connections through bastion hosts
+- **ShellProcessor** — Executes shell commands with logging
+
+### Livewire Components
+
+- `DatabaseServer/*` — CRUD operations for database servers
+- `Volume/*` — CRUD operations for storage volumes
+- `BackupJob/Index` — Job listing with logs modal
+- `Snapshot/Index` — Snapshot listing and management
+- `Settings/*` — User settings (Profile, Password, TwoFactor)
+- `RestoreModal` — 3-step wizard for snapshot restoration
+
+### Backup & Restore Workflow
+
+**Backup Process:**
+1. Connect to database server
+2. Establish SSH tunnel if configured
+3. Execute database-specific dump (mariadb-dump/pg_dump/sqlpackage/mongodump/redis-cli/cp)
+4. Compress with gzip
+5. Upload to configured volume (local/S3)
+6. Record snapshot metadata
+
+**Restore Process:**
+1. Select source snapshot
+2. Download and decompress
+3. Validate compatibility (database types must match)
+4. Drop and recreate target database
+5. Restore SQL dump
+
+**Cross-Server Restore:** Restore production snapshots to staging/preprod as long as database types match.
+
+## Configuration
+
+### Environment Variables
+
+The `.env` file is committed to the repository and contains default development configuration. To override these values, create a `.env.local` file (which is gitignored).
+
+Key development configuration:
+
+```env
+# Application
+APP_URL=http://localhost:2226
+
+# Database (for application data)
+DB_CONNECTION=sqlite
+
+# Queue
+QUEUE_CONNECTION=database
+
+# AWS S3 (optional, for S3 volume testing)
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+```
+
+## Testing Strategy
+
+We use Pest PHP for testing. Key principles:
+
+- **Test business logic and behaviors** — Not framework internals
+- **Mock external services** — AWS SDK, S3 client, etc.
+- **Don't mock models** — Use real database interactions
+
+### What to Test
+
+- Authorization (who can access what)
+- Business logic (backup works, restore works, cleanup deletes correct snapshots)
+- Integration points (external services, commands)
+
+### What NOT to Test
+
+- Form validation rules (Laravel handles this)
+- Eloquent relationships and cascades
+- Session flash messages
+- Framework behavior
+
+## Submitting Changes
+
+1. Create a feature branch from `main`
+2. Write tests for new functionality
+3. Ensure all tests pass: `make test`
+4. Run code quality checks: `make lint-fix && make phpstan`
+5. Submit a pull request with a clear description. Its title becomes the squash-commit subject that feeds `CHANGELOG.md`, so write it as a conventional commit (`feat: …`, `fix: …`, `fix(security): …`, `feat!: …` for breaking changes)
+
+For significant changes, open an issue first to discuss the approach.
+
+## Releasing
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with one section per minor version and every entry prefixed by the patch release that shipped it. The application renders it on its own **Changelog** page. The `/changelog` Claude Code skill turns the commits since the last tag into user-facing entries. Feature pull requests never edit the changelog; it is written at release time:
+
+1. `make release VERSION=x.y.z` from a clean, up-to-date `main`. When `CHANGELOG.md` has no `x.y.z` entries yet, it runs the `/changelog x.y.z` skill headlessly, which files the entries under that version's minor section, commits to `main` and pushes.
+2. It then tags `vx.y.z` and pushes the tag. To review the entry before tagging, run `/changelog x.y.z` in Claude Code first.
+3. The workflows build the Docker images, Helm chart, documentation, and the GitHub Release.
+
+---
+
+## Remote Agents
+
+
+A remote **agent** backs up databases that Datacask cannot reach directly — without opening any inbound port to them.
+
+Instead of Datacask connecting **in** to your database (as an [SSH tunnel](./ssh-tunnel.md) does), you run a small agent next to the database that connects **out** to Datacask. The database stays completely private; only outbound HTTPS is ever needed.
+
+:::info Egress, not ingress
+The SSH tunnel needs **inbound** access (Datacask reaches into the network). An agent needs only **outbound** HTTPS. That makes it the right fit for hardened, firewalled, or multi-tenant environments where opening inbound ports is forbidden.
+:::
+
+## How it works
+
+The agent is the same Datacask image running in agent mode (`agent:run`). It polls the server over HTTPS, claims any job assigned to it, runs the dump on its own network, uploads the result straight to your storage volume, and reports back. It never receives an inbound connection and never touches the server's database.
+
+```mermaid
+flowchart TB
+  subgraph net["🔒 Your private network — no inbound ports"]
+    direction LR
+    DB[("Database")]
+    Agent["Agent (agent:run)"]
+    Vol["Volume (S3 / SFTP)"]
+    Agent ==>|dump| DB
+    Agent ==>|upload| Vol
+  end
+
+  Agent -. "outbound HTTPS only (poll → claim → report)" .-> Server["Datacask server"]
+
+  classDef agent fill:#dbeafe,stroke:#3b82f6,stroke-width:1.5px,color:#1e3a8a;
+  classDef data fill:#ede9fe,stroke:#8b5cf6,stroke-width:1.5px,color:#4c1d95;
+  classDef server fill:#dcfce7,stroke:#22c55e,stroke-width:1.5px,color:#14532d;
+
+  class Agent agent;
+  class DB,Vol data;
+  class Server server;
+
+  style net fill:#f8fafc,stroke:#cbd5e1,stroke-width:1px,color:#475569;
+```
+
+1. **Poll** — the agent sends a heartbeat and asks the server for work.
+2. **Claim** — the server hands back a job describing the database, the schedule, and the destination volume.
+3. **Run** — the agent dumps the database (it reaches it on the local network) and uploads the snapshot to the volume.
+4. **Report** — the agent acknowledges the result (filename, size, checksum, logs) so the snapshot shows up in the UI like any other.
+
+## When to use an agent
+
+- The database lives in a network where **no inbound port** can be opened (compliance, firewall, customer-managed VPC).
+- You back up databases in **many isolated networks** and want one Datacask server orchestrating them all over HTTPS.
+- An [SSH tunnel](./ssh-tunnel.md) isn't possible because there's no SSH host to reach.
+
+If you *can* reach the database directly or over SSH, prefer that — it's simpler. The agent's unique value is the outbound-only connectivity.
+
+## Setup
+
+1. **Create an agent** — go to **Agents → Add Agent**, then copy the token shown once on creation.
+2. **Run the agent** next to your database, pointing it at your server:
+
+   ```bash
+   docker run -d --restart unless-stopped \
+     --name datacask-agent \
+     -e DATABASEMENT_URL='https://datacask.example.com' \
+     -e DATABASEMENT_AGENT_TOKEN='<paste-token>' \
+     registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+   ```
+
+   When `DATABASEMENT_URL` is set, the container runs in agent mode — it only executes `agent:run` and needs no database configuration of its own.
+
+3. **Assign the agent** to a database server by setting its **Agent** field. From then on, that server's backups run through the agent.
+
+The **Agents** page shows each agent's connection status, so you can confirm it's polling.
+
+## Constraints
+
+- **No local volume** — the agent uploads from its own network, so it must use a reachable destination (S3-compatible or SFTP/FTP), not the server's local storage.
+- **Backups only** — restore is not available for agent-backed servers.
+
+---
+
+## SSH Tunnel
+
+
+Connect to databases that aren't directly reachable from Datacask: in private networks, behind a bastion/jump host, or on a remote Docker host whose database ports aren't published.
+
+:::info How it works
+Datacask runs `ssh -N -L <localPort>:<host>:<port>` before each backup or restore and closes it afterward. SSH credentials are encrypted at rest.
+:::
+
+:::note No database tools needed on the SSH host
+The dump and restore tools (`mariadb-dump`, `pg_dump`, `mongodump`, and so on) run inside the Datacask container and are NOT NEEDED on the SSH host.
+:::
+
+## Configuration
+
+Enable **SSH Tunnel** on the database server and point it at the SSH host:
+
+| Field | Description |
+|-------|-------------|
+| SSH Host | SSH server hostname or IP (bastion, jump host, or remote Docker host) |
+| SSH Port | SSH port (default: 22) |
+| SSH Username | SSH user |
+| Auth Type | `Password` or `Private Key` (with optional passphrase) |
+| Enable compression | Adds `-C` to the tunnel, trading CPU on both ends for bandwidth. Off by default; worth enabling on slow links |
+
+### Reusing an SSH configuration
+
+Once you've saved an SSH config, the form offers **Use existing** (pick a saved config) or **Set up a new SSH config**. Reusing one lets several database servers share the same host connection — update it once and every server that references it follows.
+
+### Generating an SSH key
+
+With **Auth Type** set to **Private Key**, the form can **Generate a new Ed25519 keypair** for you. Copy the displayed public key into `~/.ssh/authorized_keys` on the SSH server before saving — it's shown only once and the public key isn't stored.
+
+### Creating an SSH configuration via the API
+
+SSH configurations are also a REST resource, so a whole tunnel-backed server can be provisioned without touching the UI. `POST /api/v1/database-server-ssh-configs` returns the new config's `id`, ready to pass as `ssh_config_id` when creating the database server:
+
+```bash
+curl -X POST https://datacask.example.com/api/v1/database-server-ssh-configs \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "host": "bastion.example.com",
+    "port": 22,
+    "username": "databasement",
+    "auth_type": "key",
+    "generate_key": true
+  }'
+```
+
+With `generate_key`, the keypair is generated server-side and the public key comes back in the response — copy it into `authorized_keys` on the SSH host. As in the UI, it is returned only once and never stored. Omit `generate_key` to send your own `private_key` (and optional `key_passphrase`), or use `"auth_type": "password"` with a `password`.
+
+`compression` is accepted here too, and defaults to `false` when omitted.
+
+Credentials are write-only: `GET`, `PUT` and the list endpoint never return them, and omitting them on `PUT` keeps the stored ones. A configuration still attached to a database server cannot be deleted. See [REST API](./api.md) for the full reference.
+
+## Backing up databases on a remote host
+
+When databases run in Docker containers on a remote machine with ports only on an internal network, the tunnel reuses the **same SSH access you already use to manage that host** — no separate agent is needed, and the database stays private.
+
+Publish the database port to the host's loopback, so it's reachable from the host but not from the network:
+
+```yaml
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "127.0.0.1:5432:5432"
+```
+
+Set the database **Host** to `127.0.0.1` and **Port** to `5432`. Loopback is exactly where the tunnel terminates, so Datacask can reach the database while the network cannot.
+
+### Optional: SSH server in the stack
+
+If the host doesn't expose SSH — or you'd rather not publish the database port at all — add a small SSH server to the same Compose project. Only the SSH port is published; Datacask reaches the database by its service name over the project's default network.
+
+```yaml
+services:
+  db:
+    image: postgres:18
+
+  sshd:
+    image: lscr.io/linuxserver/openssh-server
+    environment:
+      USER_NAME: databasement
+      PUBLIC_KEY: "ssh-ed25519 AAAA... databasement-tunnel"
+      DOCKER_MODS: linuxserver/mods:openssh-server-ssh-tunnel
+    ports:
+      - "2222:2222"   # only SSH is published — not the database
+```
+
+Point the SSH Tunnel at the host on port `2222`, then set the database **Host** to `db` and **Port** to `5432` — the service name resolves on the project's default network.
+
+For same-host containers sharing a Docker network (no SSH), see [Docker Networking](./database-servers.md#docker-networking) instead.
+
+## Security
+
+:::info Keep the database private
+What matters most is that the database is not reachable from the public internet: either because its host is on a private network, or because you bound the port to loopback (`127.0.0.1:5432:5432`).
+:::
+
+Optionally, restrict the SSH key to forwarding only in `authorized_keys`:
+
+```
+restrict,port-forwarding ssh-ed25519 AAAA... databasement-tunnel
+```
