@@ -10,7 +10,7 @@ This page covers additional setup guides for each channel.
 
 ## Email {#email}
 
-Databasement uses Laravel's mail system (Symfony Mailer). Configure your mail driver with these environment variables:
+Datacask uses Laravel's mail system (Symfony Mailer). Configure your mail driver with these environment variables:
 
 ---
 
@@ -24,7 +24,7 @@ MAIL_SCHEME=smtp
 MAIL_USERNAME=your-username
 MAIL_PASSWORD=your-password
 MAIL_FROM_ADDRESS=databasement@example.com
-MAIL_FROM_NAME="Databasement"
+MAIL_FROM_NAME="Datacask"
 ```
 
 `smtp` uses plain SMTP and automatically negotiates STARTTLS if the server supports it (commonly port 587).
@@ -41,7 +41,7 @@ MAIL_SCHEME=smtps
 MAIL_USERNAME=your-username
 MAIL_PASSWORD=your-password
 MAIL_FROM_ADDRESS=databasement@example.com
-MAIL_FROM_NAME="Databasement"
+MAIL_FROM_NAME="Datacask"
 ```
 
 `smtps` enables implicit TLS from the beginning of the connection.
@@ -102,7 +102,7 @@ To receive failure notifications in Slack, you need to create an Incoming Webhoo
 
 1. Go to [Slack API Apps](https://api.slack.com/apps)
 2. Click **Create New App** > **From scratch**
-3. Name your app (e.g., "Databasement") and select your workspace
+3. Name your app (e.g., "Datacask") and select your workspace
 4. Go to **Incoming Webhooks** and toggle it on
 5. Click **Add New Webhook to Workspace**
 6. Select the channel where you want notifications
@@ -128,7 +128,7 @@ To receive failure notifications in Discord via a bot, you need a bot token and 
 ### Creating a Discord Bot
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Click **New Application** and give it a name (e.g., "Databasement")
+2. Click **New Application** and give it a name (e.g., "Datacask")
 3. Go to **Bot** in the sidebar and click **Add Bot**
 4. Under **Token**, click **Copy** to get your bot token
 5. Go to **OAuth2** > **URL Generator**
@@ -182,7 +182,7 @@ Leave **Topic ID** empty to send to the group's default (General) topic.
 1. Create an account at [pushover.net](https://pushover.net/)
 2. Copy your **User Key** from the dashboard
 3. Go to **Create an Application/API Token**
-4. Name it (e.g., "Databasement") and copy the **App Token**
+4. Name it (e.g., "Datacask") and copy the **App Token**
 
 Enter both the **App Token** and **User Key** on the Configuration page.
 
@@ -191,10 +191,22 @@ Enter both the **App Token** and **User Key** on the Configuration page.
 [Gotify](https://gotify.net/) is a self-hosted push notification server.
 
 1. Log in to your Gotify server
-2. Go to **Apps** and create a new application (e.g., "Databasement")
+2. Go to **Apps** and create a new application (e.g., "Datacask")
 3. Copy the **App Token**
 
 Enter your **Gotify Server URL** (e.g., `https://gotify.example.com`) and the **App Token** on the Configuration page.
+
+## WeCom Bot {#wecom}
+
+Use a WeCom group robot to deliver backup and restore notifications to an Enterprise WeChat group:
+
+1. Open the target group in Enterprise WeChat.
+2. Open **Group Settings**, choose **Group Robots**, and add a robot.
+3. Copy the complete webhook URL generated for the robot.
+4. In Datacask, open **Configuration > Notification**, add a **WeCom Bot** channel, and paste the URL.
+5. Use the paper-airplane action beside the channel to send a test notification.
+
+The webhook URL contains the robot key and is stored encrypted. Treat it as a credential and do not share it in logs or documentation. Datacask checks both the HTTP status and WeCom's response error code, so a rejected message is reported by the test action.
 
 ## Webhook {#webhook}
 
@@ -234,13 +246,14 @@ The webhook channel can be pointed at an [Apprise](https://github.com/caronc/app
 
 ## What Gets Notified
 
-Notifications are sent only for **failures**:
+Each database server controls which events are sent: **all events**, **success only**, **failure only**, or **none**. The default is **failure only**.
 
 - **Backup failures**: When a scheduled or manual backup fails
+- **Backup successes**: When a scheduled or manual backup succeeds and success notifications are enabled
 - **Restore failures**: When a restore operation fails
+- **Restore successes**: When a restore succeeds and success notifications are enabled
 - **Missing snapshots**: When snapshot file verification detects missing backup files on storage volumes
-
-Successful operations do not trigger notifications.
+- **Storage limit warnings**: When a volume exceeds its configured limit in notify-only mode
 
 ## Notification Content
 

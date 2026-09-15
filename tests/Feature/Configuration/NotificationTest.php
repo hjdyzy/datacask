@@ -129,8 +129,34 @@ test('manage-notifications allows creating notification channels of various type
     'telegram' => ['telegram', ['config_bot_token' => 'bot-token', 'config_chat_id' => '-123456', 'config_topic_id' => '42'], ['has_config_bot_token' => true, 'config_chat_id' => '-123456', 'config_topic_id' => '42']],
     'pushover' => ['pushover', ['config_token' => 'app-token', 'config_user_key' => 'user-key'], ['has_config_token' => true, 'has_config_user_key' => true]],
     'gotify' => ['gotify', ['config_url' => 'https://gotify.example.com', 'config_token' => 'app-token'], ['config_url' => 'https://gotify.example.com', 'has_config_token' => true]],
+    'wecom' => ['wecom', ['config_webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'], ['has_config_webhook_url' => true]],
     'webhook' => ['webhook', ['config_url' => 'https://webhook.example.com/notify'], ['config_url' => 'https://webhook.example.com/notify', 'has_config_secret' => false]],
 ]);
+
+test('wecom webhook URL is encrypted and preserved when editing', function () {
+    $webhookUrl = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=secret-key';
+
+    $component = Livewire::actingAs(User::factory()->withAbilities([Ability::ManageNotifications->value])->create())
+        ->test(Notification::class)
+        ->call('openChannelModal')
+        ->set('channelForm.name', 'DBA Team Alerts')
+        ->set('channelForm.type', 'wecom')
+        ->set('channelForm.config_webhook_url', $webhookUrl)
+        ->call('saveChannel')
+        ->assertHasNoErrors();
+
+    $channel = NotificationChannel::where('name', 'DBA Team Alerts')->firstOrFail();
+    expect($channel->config['webhook_url'])->not->toBe($webhookUrl)
+        ->and($channel->getDecryptedConfig()['webhook_url'])->toBe($webhookUrl);
+
+    $component->call('openChannelModal', $channel->id)
+        ->set('channelForm.name', 'DBA Team Notifications')
+        ->set('channelForm.config_webhook_url', '')
+        ->call('saveChannel')
+        ->assertHasNoErrors();
+
+    expect($channel->fresh()->getDecryptedConfig()['webhook_url'])->toBe($webhookUrl);
+});
 
 test('editing a channel preserves sensitive fields when left blank', function () {
     $channel = NotificationChannel::factory()->slack()->create([

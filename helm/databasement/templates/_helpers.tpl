@@ -3,7 +3,7 @@ Validate required values
 */}}
 {{- define "databasement.validateValues" -}}
 {{- if and (not .Values.app.appKey.value) (not .Values.app.appKey.fromSecret) -}}
-{{- fail "app.appKey.value is required. Generate one with: docker run --rm davidcrty/databasement:latest php artisan key:generate --show" -}}
+{{- fail "app.appKey.value is required. Generate one with: docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show" -}}
 {{- end -}}
 {{- end -}}
 

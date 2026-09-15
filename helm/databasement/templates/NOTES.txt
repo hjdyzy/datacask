@@ -1,4 +1,4 @@
-Databasement has been deployed!
+Datacask has been deployed!
 
 {{- $fullName := include "databasement.fullname" . }}
 {{- $namespace := .Release.Namespace }}

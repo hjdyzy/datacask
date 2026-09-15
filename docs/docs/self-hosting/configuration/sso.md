@@ -4,7 +4,7 @@ sidebar_position: 5
 
 # SSO
 
-Databasement supports OAuth authentication, allowing users to log in using external identity providers. This can be used alongside or instead of traditional password authentication.
+Datacask supports OAuth authentication, allowing users to log in using external identity providers. This can be used alongside or instead of traditional password authentication.
 
 ## Supported Providers
 
@@ -82,15 +82,15 @@ OAUTH_OIDC_LABEL=SSO  # Button label on login page
    - **Client authentication**: **On** (required for confidential clients)
    - **Authentication flow**: Check **Standard flow** (Authorization Code Flow)
 
-3. In the **Settings** tab, configure the URLs (replace `databasement.example.com` with your domain):
+3. In the **Settings** tab, configure the URLs (replace `datacask.example.com` with your domain):
 
    | Field                           | Value                                                  |
    | ------------------------------- | ------------------------------------------------------ |
-   | Root URL                        | `https://databasement.example.com`                     |
-   | Home URL                        | `https://databasement.example.com`                     |
-   | Valid redirect URIs             | `https://databasement.example.com/oauth/oidc/callback` |
-   | Valid post logout redirect URIs | `https://databasement.example.com`                     |
-   | Web origins                     | `https://databasement.example.com`                     |
+   | Root URL                        | `https://datacask.example.com`                     |
+   | Home URL                        | `https://datacask.example.com`                     |
+   | Valid redirect URIs             | `https://datacask.example.com/oauth/oidc/callback` |
+   | Valid post logout redirect URIs | `https://datacask.example.com`                     |
+   | Web origins                     | `https://datacask.example.com`                     |
 
 4. Go to the **Credentials** tab and copy the **Client secret**
 
@@ -177,12 +177,12 @@ OAUTH_AUTO_LINK_BY_EMAIL=true  # Default: true
 
 ## OIDC Group-Based Role Mapping
 
-When using a Generic OIDC provider (Keycloak, Authentik, Dex, etc.), you can map IdP groups to Databasement roles automatically. This lets you control who can access Databasement and what role they get — all from your identity provider.
+When using a Generic OIDC provider (Keycloak, Authentik, Dex, etc.), you can map IdP groups to Datacask roles automatically. This lets you control who can access Datacask and what role they get — all from your identity provider.
 
 ### How It Works
 
 1. Your IdP includes a `groups` claim in the OIDC token (e.g., `["devops", "databasement-admins"]`)
-2. Databasement checks the user's groups against your configured mappings
+2. Datacask checks the user's groups against your configured mappings
 3. The user gets the highest-priority matching role: **admin > member > viewer**
 4. Roles are synced on every login, so changes in the IdP take effect immediately
 
@@ -194,7 +194,7 @@ First, make sure your IdP sends groups in the token. Most IdPs require requestin
 OAUTH_OIDC_SCOPES=groups
 ```
 
-Then map IdP groups to Databasement roles. Use comma-separated values if multiple IdP groups should map to the same role:
+Then map IdP groups to Datacask roles. Use comma-separated values if multiple IdP groups should map to the same role:
 
 ```env
 OAUTH_OIDC_ROLE_MAP_ADMIN=databasement-admins
@@ -216,7 +216,7 @@ With strict mode, users who don't have any matching group are rejected at login 
 
 ### Custom Claim Name
 
-By default, Databasement reads the `groups` claim. If your IdP uses a different claim name (e.g., `roles` or `realm_access`):
+By default, Datacask reads the `groups` claim. If your IdP uses a different claim name (e.g., `roles` or `realm_access`):
 
 ```env
 OAUTH_OIDC_ROLE_CLAIM=roles

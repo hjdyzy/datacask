@@ -31,6 +31,14 @@ enum NotificationType: string
         };
     }
 
+    public function weComColor(): string
+    {
+        return match ($this) {
+            self::Success => 'info',
+            self::Failure => 'warning',
+        };
+    }
+
     public function mailButtonColor(): string
     {
         return match ($this) {

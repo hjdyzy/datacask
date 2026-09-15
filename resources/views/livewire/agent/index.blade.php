@@ -31,7 +31,7 @@
         <x-slot:actions>
             <x-button
                 :label="__('Learn more')"
-                link="https://david-crty.github.io/databasement/user-guide/agents"
+                link="{{ config('app.documentation_url') }}/user-guide/agents"
                 external
                 icon="o-book-open"
                 class="btn-sm"

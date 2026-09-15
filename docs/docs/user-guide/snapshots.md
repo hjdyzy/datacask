@@ -8,7 +8,7 @@ Snapshots are the backup files created when you backup a database. They contain 
 
 ## File Verification
 
-Databasement verifies daily that backup files still exist on their storage volumes. Missing files are surfaced on the dashboard and in the jobs index with a "File missing" warning.
+Datacask verifies daily that backup files still exist on their storage volumes. Missing files are surfaced on the dashboard and in the jobs index with a "File missing" warning.
 
 You can also trigger verification manually from the dashboard.
 
@@ -16,7 +16,7 @@ See [Backup Configuration](../self-hosting/configuration/backup.md) for `BACKUP_
 
 ## Restore Process
 
-When you restore a snapshot, Databasement:
+When you restore a snapshot, Datacask:
 
 1. Downloads the snapshot from storage
 2. Decompresses the backup file
@@ -71,5 +71,5 @@ A scheduled restore is configured with:
 - **Target server** and destination database name/path
 - **Schedule** — reuses the same cron schedules defined under Configuration → Backup
 
-On each run, Databasement picks the most recent completed snapshot of the source database and runs the normal [restore process](#restore-process) against the target. Source and target must be of the same database type.
+On each run, Datacask picks the most recent completed snapshot of the source database and runs the normal [restore process](#restore-process) against the target. Source and target must be of the same database type.
 

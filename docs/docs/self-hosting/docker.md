@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Docker
 
-This guide will help you deploy Databasement using Docker. This is the simplest deployment method, using a single container that includes everything you need.
+This guide will help you deploy Datacask using Docker. This is the simplest deployment method, using a single container that includes everything you need.
 
 ## Prerequisites
 
@@ -16,13 +16,13 @@ This guide will help you deploy Databasement using Docker. This is the simplest 
 ### 1. Create Project Directory
 
 ```bash
-mkdir databasement && cd databasement
+mkdir datacask && cd datacask
 ```
 
 ### 2. Generate Application Key
 
 ```bash
-APP_KEY=$(docker run --rm davidcrty/databasement:1 php artisan key:generate --show)
+APP_KEY=$(docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show)
 ```
 
 ### 3. Create Environment File
@@ -45,11 +45,11 @@ ENABLE_QUEUE_WORKER=true
 
 ```bash
 docker run -d \
-  --name databasement \
+  --name datacask \
   -p 2226:2226 \
   --env-file .env \
-  -v ./databasement-data:/data \
-  davidcrty/databasement:1
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 ```
 
 :::note
@@ -99,14 +99,14 @@ When using `--user`, you must manually set `/data` directory volume permissions 
 Pull the new image and recreate the container. Migrations run automatically on startup.
 
 ```bash
-docker pull davidcrty/databasement:1
+docker pull registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 docker stop databasement && docker rm databasement
 docker run -d \
-  --name databasement \
+  --name datacask \
   -p 2226:2226 \
   --env-file .env \
-  -v ./databasement-data:/data \
-  davidcrty/databasement:1
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 ```
 
 See [Versioning](versioning) for available versions.

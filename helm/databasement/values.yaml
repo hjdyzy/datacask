@@ -4,7 +4,7 @@
 replicaCount: 1
 
 image:
-  repository: davidcrty/databasement
+  repository: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask
   pullPolicy: Always
   tag: "0.0.0-dev"
 
@@ -18,12 +18,12 @@ port: 2226
 
 # Application configuration
 app:
-  name: Databasement
+  name: Datacask
   env: production
   debug: false
   url: http://localhost:2226
   # Application encryption key (required)
-  # Generate with: docker run --rm davidcrty/databasement:latest php artisan key:generate --show
+  # Generate with: docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
   appKey:
     value: ""
     # Generate key from secret
@@ -56,7 +56,7 @@ resources:
     cpu: 100m
     memory: 512Mi
 # Extra environment variables to add to app and worker containers
-# See available variables on https://david-crty.github.io/databasement/self-hosting/configuration
+# See available variables on https://hjdyzy.github.io/datacask/self-hosting/configuration
 extraEnv: {}
 #  AWS_REGION: us-east-1
 extraEnvFrom: []
@@ -163,4 +163,3 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
-

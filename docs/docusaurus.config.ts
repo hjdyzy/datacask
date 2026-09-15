@@ -18,16 +18,16 @@ const versions: string[] = fs.existsSync(versionsFile)
 const isVersioned = versions.length > 0;
 
 const config: Config = {
-    title: 'Databasement',
-    tagline: 'Simple and powerful database backup management',
+    title: 'Datacask',
+    tagline: 'Self-hosted database backup management',
     favicon: 'img/favicon.ico',
 
     plugins: [
         [
             'docusaurus-plugin-llms',
             {
-                title: 'Databasement Documentation',
-                description: 'Simple and powerful database backup management — self-hosting and user documentation for Databasement.',
+                title: 'Datacask Documentation',
+                description: 'Self-hosting and user documentation for Datacask database backup management.',
                 generateLLMsTxt: true,
                 generateLLMsFullTxt: true,
                 generateMarkdownFiles: true,
@@ -63,11 +63,11 @@ const config: Config = {
         ],
     ],
 
-    url: isLocalBuild ? 'http://localhost:3000' : 'https://david-crty.github.io',
-    baseUrl: '/databasement/',
+    url: isLocalBuild ? 'http://localhost:3000' : 'https://hjdyzy.github.io',
+    baseUrl: '/datacask/',
 
-    organizationName: 'David-Crty',
-    projectName: 'databasement',
+    organizationName: 'hjdyzy',
+    projectName: 'datacask',
 
     markdown: {
         mermaid: true,
@@ -107,7 +107,7 @@ const config: Config = {
                     // Versioned snapshots are ephemeral (not in the repo), so
                     // always point "Edit this page" at the docs source on main.
                     editUrl: ({docPath}) =>
-                        `https://github.com/David-Crty/databasement/tree/main/docs/docs/${docPath}`,
+                        `https://github.com/hjdyzy/datacask/tree/main/docs/docs/${docPath}`,
                     ...(isVersioned ? {
                         includeCurrentVersion: false,
                         lastVersion: versions[0],
@@ -129,17 +129,12 @@ const config: Config = {
 
     themeConfig: {
         navbar: {
-            title: 'Databasement',
+            title: 'Datacask',
             logo: {
-                alt: 'Databasement Logo',
+                alt: 'Datacask Logo',
                 src: 'img/logo.png',
             },
             items: [
-                {
-                    href: 'https://databasement-demo.crty.dev/',
-                    label: 'Demo',
-                    position: 'left',
-                },
                 {
                     type: 'doc',
                     docId: 'self-hosting/intro',
@@ -173,7 +168,7 @@ const config: Config = {
                     title: 'LLM-friendly documentation index (llmstxt.org)',
                 },
                 {
-                    href: 'https://github.com/David-Crty/databasement',
+                    href: 'https://github.com/hjdyzy/datacask',
                     label: 'GitHub',
                     position: 'right',
                 },
@@ -200,12 +195,12 @@ const config: Config = {
                     items: [
                         {
                             label: 'GitHub',
-                            href: 'https://github.com/David-Crty/databasement',
+                            href: 'https://github.com/hjdyzy/datacask',
                         },
                     ],
                 },
             ],
-            copyright: `Copyright © ${new Date().getFullYear()} Databasement. Built with Docusaurus.`,
+            copyright: `Copyright © ${new Date().getFullYear()} Datacask. Built with Docusaurus.`,
         },
         prism: {
             theme: prismThemes.github,

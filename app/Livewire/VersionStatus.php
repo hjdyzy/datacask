@@ -19,9 +19,9 @@ class VersionStatus extends Component
 
     public string $dockerComposeCommand = "docker compose pull\ndocker compose up -d";
 
-    public string $helmCommand = "helm repo update\nhelm upgrade databasement databasement/databasement";
+    public string $helmCommand = "helm repo update\nhelm upgrade datacask datacask/databasement";
 
-    public string $dockerCommand = "docker pull davidcrty/databasement:1\ndocker stop databasement && docker rm databasement\ndocker run -d \\\n  --name databasement \\\n  -p 2226:2226 \\\n  --env-file .env \\\n  -v ./databasement-data:/data \\\n  davidcrty/databasement:1";
+    public string $dockerCommand = "docker pull registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest\ndocker stop datacask && docker rm datacask\ndocker run -d \\\n  --name datacask \\\n  -p 2226:2226 \\\n  --env-file .env \\\n  -v ./datacask-data:/data \\\n  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest";
 
     #[Locked]
     public ?string $latestVersion = null;
@@ -72,7 +72,7 @@ class VersionStatus extends Component
 
     private function loadLatestRelease(): void
     {
-        $cacheKey = 'github_latest_release';
+        $cacheKey = $this->releaseCacheKey();
         $cached = Cache::get($cacheKey);
 
         if (is_string($cached)) {
@@ -111,15 +111,20 @@ class VersionStatus extends Component
 
     private function releaseUrl(string $tag): string
     {
-        return config('app.upstream_repo').'/releases/tag/'.$tag;
+        return config('app.github_repo').'/releases/tag/'.$tag;
     }
 
     private function githubApiUrl(): string
     {
-        $repo = config('app.upstream_repo');
+        $repo = config('app.github_repo');
         $path = trim(str_replace('https://github.com/', '', $repo), '/');
 
         return "https://api.github.com/repos/{$path}/releases/latest";
+    }
+
+    private function releaseCacheKey(): string
+    {
+        return 'github_latest_release:'.sha1((string) config('app.github_repo'));
     }
 
     public function isUpToDate(): bool

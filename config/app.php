@@ -187,17 +187,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Source Repositories
+    | Project Resources
     |--------------------------------------------------------------------------
     |
-    | The project repository is used for source and issue links. Version checks
-    | continue to follow the upstream project until this fork publishes its own
-    | release artifacts.
+    | These URLs are used for source, issue, documentation, and version links.
     |
     */
 
     'github_repo' => env('APP_REPOSITORY', 'https://github.com/hjdyzy/datacask'),
-    'upstream_repo' => env('APP_UPSTREAM_REPOSITORY', 'https://github.com/David-Crty/databasement'),
+    'documentation_url' => env('APP_DOCUMENTATION_URL', 'https://hjdyzy.github.io/datacask'),
 
     /*
     |--------------------------------------------------------------------------

@@ -4,17 +4,17 @@ sidebar_position: 4
 
 # Remote Agents
 
-A remote **agent** backs up databases that Databasement cannot reach directly — without opening any inbound port to them.
+A remote **agent** backs up databases that Datacask cannot reach directly — without opening any inbound port to them.
 
-Instead of Databasement connecting **in** to your database (as an [SSH tunnel](./ssh-tunnel.md) does), you run a small agent next to the database that connects **out** to Databasement. The database stays completely private; only outbound HTTPS is ever needed.
+Instead of Datacask connecting **in** to your database (as an [SSH tunnel](./ssh-tunnel.md) does), you run a small agent next to the database that connects **out** to Datacask. The database stays completely private; only outbound HTTPS is ever needed.
 
 :::info Egress, not ingress
-The SSH tunnel needs **inbound** access (Databasement reaches into the network). An agent needs only **outbound** HTTPS. That makes it the right fit for hardened, firewalled, or multi-tenant environments where opening inbound ports is forbidden.
+The SSH tunnel needs **inbound** access (Datacask reaches into the network). An agent needs only **outbound** HTTPS. That makes it the right fit for hardened, firewalled, or multi-tenant environments where opening inbound ports is forbidden.
 :::
 
 ## How it works
 
-The agent is the same Databasement image running in agent mode (`agent:run`). It polls the server over HTTPS, claims any job assigned to it, runs the dump on its own network, uploads the result straight to your storage volume, and reports back. It never receives an inbound connection and never touches the server's database.
+The agent is the same Datacask image running in agent mode (`agent:run`). It polls the server over HTTPS, claims any job assigned to it, runs the dump on its own network, uploads the result straight to your storage volume, and reports back. It never receives an inbound connection and never touches the server's database.
 
 ```mermaid
 flowchart TB
@@ -27,7 +27,7 @@ flowchart TB
     Agent ==>|upload| Vol
   end
 
-  Agent -. "outbound HTTPS only (poll → claim → report)" .-> Server["Databasement server"]
+  Agent -. "outbound HTTPS only (poll → claim → report)" .-> Server["Datacask server"]
 
   classDef agent fill:#dbeafe,stroke:#3b82f6,stroke-width:1.5px,color:#1e3a8a;
   classDef data fill:#ede9fe,stroke:#8b5cf6,stroke-width:1.5px,color:#4c1d95;
@@ -48,7 +48,7 @@ flowchart TB
 ## When to use an agent
 
 - The database lives in a network where **no inbound port** can be opened (compliance, firewall, customer-managed VPC).
-- You back up databases in **many isolated networks** and want one Databasement server orchestrating them all over HTTPS.
+- You back up databases in **many isolated networks** and want one Datacask server orchestrating them all over HTTPS.
 - An [SSH tunnel](./ssh-tunnel.md) isn't possible because there's no SSH host to reach.
 
 If you *can* reach the database directly or over SSH, prefer that — it's simpler. The agent's unique value is the outbound-only connectivity.
@@ -60,10 +60,10 @@ If you *can* reach the database directly or over SSH, prefer that — it's simpl
 
    ```bash
    docker run -d --restart unless-stopped \
-     --name databasement-agent \
-     -e DATABASEMENT_URL='https://databasement.example.com' \
+     --name datacask-agent \
+     -e DATABASEMENT_URL='https://datacask.example.com' \
      -e DATABASEMENT_AGENT_TOKEN='<paste-token>' \
-     davidcrty/databasement:1
+     registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
    ```
 
    When `DATABASEMENT_URL` is set, the container runs in agent mode — it only executes `agent:run` and needs no database configuration of its own.

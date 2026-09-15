@@ -1,23 +1,22 @@
-# Databasement Helm Chart
+# Datacask Helm Chart
 
-Deploy [Databasement](https://github.com/david-crty/databasement) on Kubernetes using Helm.
+Deploy [Datacask](https://github.com/hjdyzy/datacask) on Kubernetes using Helm.
 
 The chart version matches the application version — chart `1.0.1` deploys app `1.0.1`.
 
 ## Links
 
-- [Documentation](https://david-crty.github.io/databasement)
-- [GitHub Repository](https://github.com/david-crty/databasement)
-- [GitHub Releases](https://github.com/David-Crty/databasement/releases)
-- [Docker Hub](https://hub.docker.com/r/davidcrty/databasement)
-- [Artifact Hub](https://artifacthub.io/packages/helm/databasement/databasement)
+- [Documentation](https://hjdyzy.github.io/datacask)
+- [GitHub Repository](https://github.com/hjdyzy/datacask)
+- [GitHub Releases](https://github.com/hjdyzy/datacask/releases)
+- Container image: `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask`
 
 ## Installation
 
 ### 1. Add the Helm Repository
 
 ```bash
-helm repo add databasement https://david-crty.github.io/databasement
+helm repo add datacask https://hjdyzy.github.io/datacask
 helm repo update
 ```
 
@@ -26,7 +25,7 @@ helm repo update
 Before deploying, generate an application encryption key:
 
 ```bash
-docker run --rm davidcrty/databasement:1 php artisan key:generate --show
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
 ```
 
 Copy the output (e.g., `base64:abc123...`) for use in your values file.
@@ -98,14 +97,14 @@ database:
 ### 4. Install the Chart
 
 ```bash
-helm upgrade --install databasement databasement/databasement -f values.yaml
+helm upgrade --install datacask datacask/databasement -f values.yaml
 ```
 
 ## Updating
 
 ```bash
 helm repo update
-helm upgrade --install databasement databasement/databasement --version X.X.X -f values.yaml
+helm upgrade --install datacask datacask/databasement --version X.X.X -f values.yaml
 ```
 
 Migrations run automatically on startup.
@@ -114,7 +113,7 @@ Migrations run automatically on startup.
 
 See [values.yaml](values.yaml) for the full list of configurable parameters.
 
-For all available environment variables, see the [Configuration Documentation](https://david-crty.github.io/databasement/self-hosting/configuration).
+For all available environment variables, see the [Configuration Documentation](https://hjdyzy.github.io/datacask/self-hosting/configuration).
 
 ### Custom Environment Variables
 
@@ -183,4 +182,4 @@ worker:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/david-crty/databasement/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/hjdyzy/datacask/blob/main/LICENSE) file for details.

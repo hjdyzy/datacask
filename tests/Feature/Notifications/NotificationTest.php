@@ -12,6 +12,7 @@ use App\Notifications\ChannelNotifiable;
 use App\Notifications\Channels\DiscordWebhookChannel;
 use App\Notifications\Channels\GotifyChannel;
 use App\Notifications\Channels\WebhookChannel;
+use App\Notifications\Channels\WeComChannel;
 use App\Notifications\NotificationMessage;
 use App\Notifications\RestoreFailedNotification;
 use App\Notifications\RestoreSuccessNotification;
@@ -205,6 +206,7 @@ test('notification is sent to channel when configured', function (string $factor
     'pushover' => ['pushover', ['token' => 'push-token', 'user_key' => 'user-key-123'], PushoverChannel::class, 'pushover'],
     'gotify' => ['gotify', ['url' => 'https://gotify.example.com', 'token' => 'app-token'], GotifyChannel::class, 'gotify'],
     'discordWebhook' => ['discordWebhook', ['url' => 'https://discord.com/api/webhooks/123/abc'], DiscordWebhookChannel::class, 'discord_webhook'],
+    'wecom' => ['wecom', ['webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'], WeComChannel::class, 'wecom'],
     'webhook' => ['webhook', ['url' => 'https://webhook.example.com/hook', 'secret' => 'my-secret'], WebhookChannel::class, 'webhook'],
 ]);
 
@@ -332,6 +334,7 @@ test('via method returns channels based on configured routes', function () {
         'pushover' => 'user-key-123',
         'gotify' => 'https://gotify.example.com',
         'discord_webhook' => 'https://discord.com/api/webhooks/123/abc',
+        'wecom' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key',
         'webhook' => 'https://webhook.example.com/hook',
     ]]);
     expect($channels)->toBe([
@@ -342,6 +345,7 @@ test('via method returns channels based on configured routes', function () {
         PushoverChannel::class,
         GotifyChannel::class,
         DiscordWebhookChannel::class,
+        WeComChannel::class,
         WebhookChannel::class,
     ]);
 
@@ -463,6 +467,13 @@ test('failure message renders every channel with error details', function (Closu
             ->and($webhook['action_url'])->toBeString()
             ->and($webhook['timestamp'])->toBeString();
     }],
+    'wecom' => [function (BackupFailedNotification $notification) {
+        $wecom = $notification->toWeCom((object) []);
+        expect($wecom['msgtype'])->toBe('markdown')
+            ->and($wecom['markdown']['content'])->toContain('Backup Failed')
+            ->and($wecom['markdown']['content'])->toContain('Test error')
+            ->and($wecom['markdown']['content'])->toContain('<font color="warning">');
+    }],
 ]);
 
 test('success message renders every channel without error details', function () {
@@ -481,6 +492,11 @@ test('success message renders every channel without error details', function () 
 
     // Discord webhook uses the success colour
     expect($message->toDiscordWebhook()['embeds'][0]['color'])->toBe(3066993);
+
+    $wecom = $message->toWeCom();
+    expect($wecom['msgtype'])->toBe('markdown')
+        ->and($wecom['markdown']['content'])->toContain('<font color="info">')
+        ->and($wecom['markdown']['content'])->not->toContain('Test error');
 
     // Webhook omits the error key for success
     $webhook = $message->toWebhook('BackupSuccessNotification');
@@ -508,7 +524,9 @@ test('telegram notification sets message_thread_id only when a topic id is confi
 // --- Custom HTTP channels ---
 
 test('custom channel sends HTTP request', function (string $channelClass, array $channelConfig, Closure $assertRequest) {
-    Http::fake();
+    Http::fake(fn (Request $request) => str_contains($request->url(), 'qyapi.weixin.qq.com')
+        ? Http::response(['errcode' => 0, 'errmsg' => 'ok'])
+        : Http::response());
 
     $server = DatabaseServer::factory()->create(['name' => 'Test Server', 'database_names' => ['testdb']]);
     $snapshot = notificationSnapshot($server);
@@ -535,6 +553,13 @@ test('custom channel sends HTTP request', function (string $channelClass, array 
         ['url' => 'https://discord.com/api/webhooks/123/abc'],
         fn (Request $request) => $request->url() === 'https://discord.com/api/webhooks/123/abc'
             && str_contains($request['embeds'][0]['title'], 'Backup Failed'),
+    ],
+    'wecom' => [
+        WeComChannel::class,
+        ['webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'],
+        fn (Request $request) => $request->url() === 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'
+            && $request['msgtype'] === 'markdown'
+            && str_contains($request['markdown']['content'], 'Backup Failed'),
     ],
     'webhook' => [
         WebhookChannel::class,
@@ -569,11 +594,49 @@ test('custom channel throws on HTTP failure', function (string $channelClass, ar
         DiscordWebhookChannel::class,
         ['url' => 'https://discord.com/api/webhooks/123/abc'],
     ],
+    'wecom' => [
+        WeComChannel::class,
+        ['webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'],
+    ],
     'webhook' => [
         WebhookChannel::class,
         ['url' => 'https://webhook.example.com/hook'],
     ],
 ]);
+
+test('wecom channel throws when the API returns a non-zero error code', function () {
+    Http::fake(fn () => Http::response(['errcode' => 40014, 'errmsg' => 'invalid webhook key']));
+
+    $server = DatabaseServer::factory()->create(['name' => 'Test Server', 'database_names' => ['testdb']]);
+    $snapshot = notificationSnapshot($server);
+    $notification = new BackupFailedNotification($snapshot, new \Exception('Test error'));
+    $notifiable = new ChannelNotifiable(
+        routes: [],
+        channelConfig: ['webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=invalid'],
+    );
+
+    expect(fn () => (new WeComChannel)->send($notifiable, $notification))
+        ->toThrow(RuntimeException::class, '40014');
+});
+
+test('wecom markdown stays within the API byte limit and keeps the action link', function () {
+    $message = new NotificationMessage(
+        type: NotificationType::Failure,
+        title: 'Backup Failed',
+        body: 'A backup job has failed.',
+        actionText: 'View Job',
+        actionUrl: 'https://datacask.example.com/snapshots/123',
+        footerText: 'Datacask',
+        fields: ['Server' => 'Production DB'],
+        errorMessage: str_repeat('数据库连接失败', 600),
+        errorLabel: 'Error',
+    );
+
+    $content = $message->toWeCom()['markdown']['content'];
+
+    expect(strlen($content))->toBeLessThanOrEqual(4096)
+        ->and($content)->toContain('[View Job](https://datacask.example.com/snapshots/123)');
+});
 
 // --- Job failure hooks ---
 

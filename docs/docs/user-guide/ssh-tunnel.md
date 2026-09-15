@@ -4,14 +4,14 @@ sidebar_position: 3
 
 # SSH Tunnel
 
-Connect to databases that aren't directly reachable from Databasement: in private networks, behind a bastion/jump host, or on a remote Docker host whose database ports aren't published.
+Connect to databases that aren't directly reachable from Datacask: in private networks, behind a bastion/jump host, or on a remote Docker host whose database ports aren't published.
 
 :::info How it works
-Databasement runs `ssh -N -L <localPort>:<host>:<port>` before each backup or restore and closes it afterward. SSH credentials are encrypted at rest.
+Datacask runs `ssh -N -L <localPort>:<host>:<port>` before each backup or restore and closes it afterward. SSH credentials are encrypted at rest.
 :::
 
 :::note No database tools needed on the SSH host
-The dump and restore tools (`mariadb-dump`, `pg_dump`, `mongodump`, and so on) run inside the Databasement container and are NOT NEEDED on the SSH host.
+The dump and restore tools (`mariadb-dump`, `pg_dump`, `mongodump`, and so on) run inside the Datacask container and are NOT NEEDED on the SSH host.
 :::
 
 ## Configuration
@@ -39,7 +39,7 @@ With **Auth Type** set to **Private Key**, the form can **Generate a new Ed25519
 SSH configurations are also a REST resource, so a whole tunnel-backed server can be provisioned without touching the UI. `POST /api/v1/database-server-ssh-configs` returns the new config's `id`, ready to pass as `ssh_config_id` when creating the database server:
 
 ```bash
-curl -X POST https://databasement.example.com/api/v1/database-server-ssh-configs \
+curl -X POST https://datacask.example.com/api/v1/database-server-ssh-configs \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -71,11 +71,11 @@ services:
       - "127.0.0.1:5432:5432"
 ```
 
-Set the database **Host** to `127.0.0.1` and **Port** to `5432`. Loopback is exactly where the tunnel terminates, so Databasement can reach the database while the network cannot.
+Set the database **Host** to `127.0.0.1` and **Port** to `5432`. Loopback is exactly where the tunnel terminates, so Datacask can reach the database while the network cannot.
 
 ### Optional: SSH server in the stack
 
-If the host doesn't expose SSH — or you'd rather not publish the database port at all — add a small SSH server to the same Compose project. Only the SSH port is published; Databasement reaches the database by its service name over the project's default network.
+If the host doesn't expose SSH — or you'd rather not publish the database port at all — add a small SSH server to the same Compose project. Only the SSH port is published; Datacask reaches the database by its service name over the project's default network.
 
 ```yaml
 services:

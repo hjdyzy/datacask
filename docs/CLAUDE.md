@@ -1,6 +1,6 @@
 # Documentation (Docusaurus 3)
 
-GitHub Pages site at `https://david-crty.github.io/databasement/`, deployed by `.github/workflows/docs.yml` on every `v*` tag push (never from `main` merges).
+GitHub Pages site at `https://hjdyzy.github.io/datacask/`, deployed by `.github/workflows/docs.yml` on every `v*` tag push or a manual workflow run.
 
 ## Commands
 

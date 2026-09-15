@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Development Guide
 
-This guide covers setting up a local development environment for contributing to Databasement.
+This guide covers setting up a local development environment for contributing to Datacask.
 
 ## Requirements
 
@@ -18,8 +18,8 @@ This guide covers setting up a local development environment for contributing to
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/David-Crty/databasement.git
-cd databasement
+git clone https://github.com/hjdyzy/datacask.git
+cd datacask
 make setup
 ```
 
@@ -96,7 +96,7 @@ docker compose down           # Stop all services
 
 ## OAuth / SSO Testing
 
-Databasement includes a [Dex](https://dexidp.io/) OIDC server for local OAuth testing. The Dex service is commented out by default in `docker-compose.yml`.
+Datacask includes a [Dex](https://dexidp.io/) OIDC server for local OAuth testing. The Dex service is commented out by default in `docker-compose.yml`.
 
 ### 1. Add Hosts Entry
 
@@ -176,8 +176,8 @@ docker run -d --rm \
   -v "$(pwd)":/app \
   -e DATABASEMENT_URL='http://app:2226' \
   -e DATABASEMENT_AGENT_TOKEN='<paste-token>' \
-  --name databasement-agent \
-  davidcrty/databasement-php \
+  --name datacask-agent \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask-php:latest \
   php artisan agent:run
 
 docker logs -f databasement-agent   # follow output
@@ -196,7 +196,7 @@ Use `--network databasement_default` so `app:2226`, `postgres:5432`, and `rustfs
 
 ## SMB Volume Testing
 
-Databasement includes a commented-out Samba service in `docker-compose.yml` for testing SMB volumes locally.
+Datacask includes a commented-out Samba service in `docker-compose.yml` for testing SMB volumes locally.
 
 ### 1. Enable the Samba Service
 

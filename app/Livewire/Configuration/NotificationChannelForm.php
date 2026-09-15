@@ -68,6 +68,7 @@ class NotificationChannelForm extends Form
             NotificationChannelType::Telegram => $this->loadTelegramConfig($config),
             NotificationChannelType::Pushover => $this->loadPushoverConfig($config),
             NotificationChannelType::Gotify => $this->loadGotifyConfig($config),
+            NotificationChannelType::WeCom => $this->has_config_webhook_url = ! empty($config['webhook_url']),
             NotificationChannelType::Webhook => $this->loadWebhookConfig($config),
         };
     }
@@ -158,6 +159,9 @@ class NotificationChannelForm extends Form
                 'config_url' => ['required', 'string', 'url', 'max:500', new SafeEndpointUrl],
                 'config_token' => [($isEdit && $this->has_config_token) ? 'nullable' : 'required', 'string', 'max:500'],
             ]),
+            NotificationChannelType::WeCom => array_merge($rules, [
+                'config_webhook_url' => [($isEdit && $this->has_config_webhook_url) ? 'nullable' : 'required', 'string', 'url', 'max:500', new SafeEndpointUrl],
+            ]),
             NotificationChannelType::Webhook => array_merge($rules, [
                 'config_url' => ['required', 'string', 'url', 'max:500', new SafeEndpointUrl],
                 'config_secret' => ['nullable', 'string', 'max:500'],
@@ -183,6 +187,7 @@ class NotificationChannelForm extends Form
             NotificationChannelType::Telegram => ['bot_token' => $this->config_bot_token, 'chat_id' => $this->config_chat_id, 'topic_id' => $this->config_topic_id],
             NotificationChannelType::Pushover => ['token' => $this->config_token, 'user_key' => $this->config_user_key],
             NotificationChannelType::Gotify => ['url' => $this->config_url, 'token' => $this->config_token],
+            NotificationChannelType::WeCom => ['webhook_url' => $this->config_webhook_url],
             NotificationChannelType::Webhook => ['url' => $this->config_url, 'secret' => $this->config_secret],
         };
 

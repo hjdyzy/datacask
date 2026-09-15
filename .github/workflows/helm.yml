@@ -70,7 +70,7 @@ jobs:
           # Copy the packaged chart and update root index
           mkdir -p "$TMPDIR/charts"
           cp .cr-release-packages/*.tgz "$TMPDIR/charts/"
-          helm repo index "$TMPDIR" --url https://david-crty.github.io/databasement --merge "$TMPDIR/index.yaml"
+          helm repo index "$TMPDIR" --url https://hjdyzy.github.io/datacask --merge "$TMPDIR/index.yaml"
 
           # Commit and push
           cd "$TMPDIR"

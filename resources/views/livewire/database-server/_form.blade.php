@@ -208,7 +208,7 @@ use App\Enums\DatabaseType;
                                 </div>
                                 <x-button
                                     :label="__('Troubleshooting Guide')"
-                                    link="https://david-crty.github.io/databasement/user-guide/database-servers/#troubleshooting-connection-issues"
+                                    link="{{ config('app.documentation_url') }}/user-guide/database-servers/#troubleshooting-connection-issues"
                                     external
                                     class="btn-ghost btn-sm mt-2"
                                     icon="o-arrow-top-right-on-square"

@@ -4,11 +4,11 @@ sidebar_position: 5
 
 # Backups
 
-Databasement allows you to create on-demand backups of your databases. Backups are processed asynchronously, so you can continue using the application while they run.
+Datacask allows you to create on-demand backups of your databases. Backups are processed asynchronously, so you can continue using the application while they run.
 
 ## How Backups Work
 
-When you create a backup, Databasement:
+When you create a backup, Datacask:
 
 1. Connects to the database server (via SSH tunnel if configured)
 2. Runs the appropriate dump command for the database type
@@ -18,7 +18,7 @@ When you create a backup, Databasement:
 
 ### Backup Commands
 
-Databasement uses native database tools for reliable backups:
+Datacask uses native database tools for reliable backups:
 
 **MySQL/MariaDB:**
 ```bash
@@ -61,7 +61,7 @@ All dumps are then compressed with gzip before being transferred to the storage 
 
 If a backup fails, check:
 
-1. **Database connectivity**: Can Databasement still connect to the server?
+1. **Database connectivity**: Can Datacask still connect to the server?
 2. **Disk space**: Is there enough space on the storage volume?
 3. **Permissions**: Does the database user have backup privileges?
 4. **Timeout**: Large databases may need more time
@@ -70,7 +70,7 @@ Failed backup reasons are logged and visible in the snapshot details.
 
 ## Retention Policies
 
-Retention policies control how long backups are kept before being automatically deleted. Databasement offers two retention strategies:
+Retention policies control how long backups are kept before being automatically deleted. Datacask offers two retention strategies:
 
 ### Simple (Days-Based)
 

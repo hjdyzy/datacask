@@ -4,22 +4,22 @@ sidebar_position: 6
 
 # Versioning
 
-Databasement follows [semantic versioning](https://semver.org/). The Docker images, Helm chart, and application all share the same version number — version `1.0.1` means the same release everywhere.
+Datacask follows [semantic versioning](https://semver.org/). The Docker images, Helm chart, and application all share the same version number — version `1.0.1` means the same release everywhere.
 
-Every change is listed on the [Changelog](../changelog.md) page, which is also shown inside the application (linked from the sidebar and the update dialog). Available versions are listed on [GitHub Releases](https://github.com/David-Crty/databasement/releases).
+Every change is listed on the [Changelog](../changelog.md) page, which is also shown inside the application (linked from the sidebar and the update dialog). Available versions are listed on [GitHub Releases](https://github.com/hjdyzy/datacask/releases).
 
 ## Docker Image Tags
 
-Docker images are available on [Docker Hub](https://hub.docker.com/r/davidcrty/databasement). When a new version is released (e.g., `1.0.1`), the following tags are published:
+Docker images are published to the public Alibaba Cloud ACR repository. When a new version is released (e.g., `1.0.1`), the following tags are published:
 
-- `davidcrty/databasement:1.0.1` — exact version (pinned)
-- `davidcrty/databasement:1.0` — latest patch in the 1.0.x line
-- `davidcrty/databasement:1` — latest release in the 1.x.x line
-- `davidcrty/databasement:latest` — most recent release
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.0.1` — exact version (pinned)
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.0` — latest patch in the 1.0.x line
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1` — latest release in the 1.x.x line
+- `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest` — most recent release
 
-Use an exact version tag for production deployments. Use `latest` or a major/minor tag if you want automatic updates with tools like [Renovate](https://docs.renovatebot.com/) or [Watchtower](https://containrrr.dev/watchtower/).
+The deployment guides use `latest` to follow the newest production release. Pin an exact version when you need a controlled upgrade or rollback target.
 
-There is also `davidcrty/databasement:edge`, rebuilt from every push to `main`. It contains unreleased changes and carries no version number, so use it to try something out, never in production.
+There is also `registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:edge`, rebuilt from every push to `main`. It contains unreleased changes and carries no version number, so use it to try something out, never in production.
 
 ## Helm Chart
 
@@ -28,16 +28,16 @@ The Helm chart uses the same version as the application — installing chart ver
 ### Install
 
 ```bash
-helm repo add databasement https://david-crty.github.io/databasement
+helm repo add datacask https://hjdyzy.github.io/datacask
 helm repo update
-helm install databasement databasement/databasement --version 1.0.1
+helm install datacask datacask/databasement --version 1.0.1
 ```
 
 ### Update
 
 ```bash
 helm repo update
-helm upgrade databasement databasement/databasement --version 1.0.1
+helm upgrade datacask datacask/databasement --version 1.0.1
 ```
 
 ### Use as a dependency
@@ -48,7 +48,7 @@ In your `Chart.yaml`:
 dependencies:
   - name: databasement
     version: "1.0.1"
-    repository: "https://david-crty.github.io/databasement"
+    repository: "https://hjdyzy.github.io/datacask"
 ```
 
 Then run `helm dependency update`.

@@ -512,7 +512,7 @@
                         </div>
                         <x-button
                             :label="__('Docs')"
-                            link="https://david-crty.github.io/databasement/user-guide/backups/#retention-policies"
+                            link="{{ config('app.documentation_url') }}/user-guide/backups/#retention-policies"
                             external
                             class="btn-ghost btn-sm shrink-0"
                             icon="o-book-open"

@@ -4,16 +4,14 @@ sidebar_position: 5
 
 # Kubernetes + Helm
 
-This guide will help you deploy Databasement on Kubernetes using Helm.
-
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/databasement)](https://artifacthub.io/packages/search?repo=databasement)
+This guide will help you deploy Datacask on Kubernetes using Helm.
 
 ## Installation
 
 ### 1. Add the Helm Repository
 
 ```bash
-helm repo add databasement https://david-crty.github.io/databasement
+helm repo add datacask https://hjdyzy.github.io/datacask
 helm repo update
 ```
 
@@ -22,7 +20,7 @@ helm repo update
 Before deploying, generate an application encryption key:
 
 ```bash
-docker run --rm davidcrty/databasement:1 php artisan key:generate --show
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
 ```
 
 Copy the output (e.g., `base64:abc123...`) for use in your values file.
@@ -96,14 +94,14 @@ database:
 ### 4. Install the Chart
 
 ```bash
-helm upgrade --install databasement databasement/databasement -f values.yaml
+helm upgrade --install datacask datacask/databasement -f values.yaml
 ```
 
 See [Versioning](versioning) for available chart versions. The chart version matches the application version.
 
 ## Configuration
 
-For the full list of configurable parameters, see the [values.yaml](https://github.com/david-crty/databasement/blob/main/helm/databasement/values.yaml) file.
+For the full list of configurable parameters, see the [values.yaml](https://github.com/hjdyzy/datacask/blob/main/helm/databasement/values.yaml) file.
 
 For all available environment variables, see the [Configuration](./configuration) page.
 
@@ -184,7 +182,7 @@ Update the `--version` flag and run the same install command. Migrations run aut
 
 ```bash
 helm repo update
-helm upgrade --install databasement databasement/databasement --version 1.0.1 -f values.yaml
+helm upgrade --install datacask datacask/databasement --version 1.0.1 -f values.yaml
 ```
 
 See [Versioning](versioning) for available versions.

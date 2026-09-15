@@ -29,8 +29,8 @@ trait HasAgentToken
             'docker run -d \\',
             "  -e DATABASEMENT_URL='{$url}' \\",
             "  -e DATABASEMENT_AGENT_TOKEN='{$this->newToken}' \\",
-            '  --name databasement-agent \\',
-            '  davidcrty/databasement:latest',
+            '  --name datacask-agent \\',
+            '  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest',
         ]);
 
         $this->envVars = implode("\n", [

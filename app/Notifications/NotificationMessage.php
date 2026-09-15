@@ -13,6 +13,8 @@ use NotificationChannels\Telegram\TelegramMessage;
 
 class NotificationMessage
 {
+    private const int WECOM_MARKDOWN_MAX_BYTES = 4096;
+
     /**
      * @param  array<string, string>  $fields
      */
@@ -169,6 +171,58 @@ class NotificationMessage
             'message' => implode("\n", $lines),
             'priority' => $this->type->gotifyPriority(),
         ];
+    }
+
+    /**
+     * @return array{msgtype: string, markdown: array{content: string}}
+     */
+    public function toWeCom(): array
+    {
+        $lines = [
+            sprintf(
+                '### <font color="%s">%s</font>',
+                $this->type->weComColor(),
+                $this->escapeWeComMarkdown($this->title),
+            ),
+            $this->escapeWeComMarkdown($this->body),
+        ];
+
+        foreach ($this->fields as $label => $value) {
+            $lines[] = sprintf('> **%s:** %s', $this->escapeWeComMarkdown($label), $this->escapeWeComMarkdown($value));
+        }
+
+        if ($this->hasError()) {
+            $lines[] = sprintf('> **%s:** %s', $this->escapeWeComMarkdown((string) $this->errorLabel), $this->escapeWeComMarkdown((string) $this->errorMessage));
+        }
+
+        $lines[] = sprintf('> <font color="comment">%s</font>', $this->escapeWeComMarkdown($this->footerText));
+
+        $action = sprintf("\n\n[%s](%s)", $this->escapeWeComMarkdown($this->actionText), $this->actionUrl);
+
+        return [
+            'msgtype' => 'markdown',
+            'markdown' => ['content' => $this->fitWeComContent(implode("\n", $lines), $action)],
+        ];
+    }
+
+    private function escapeWeComMarkdown(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+
+    private function fitWeComContent(string $content, string $action): string
+    {
+        if (strlen($content.$action) <= self::WECOM_MARKDOWN_MAX_BYTES) {
+            return $content.$action;
+        }
+
+        $available = self::WECOM_MARKDOWN_MAX_BYTES - strlen($action) - 3;
+
+        if ($available <= 0) {
+            return mb_strcut($content.$action, 0, self::WECOM_MARKDOWN_MAX_BYTES, 'UTF-8');
+        }
+
+        return rtrim(mb_strcut($content, 0, $available, 'UTF-8')).'...'.$action;
     }
 
     /**

@@ -12,7 +12,7 @@
             <x-button
                 :label="__('Documentation')"
                 icon="o-book-open"
-                link="https://david-crty.github.io/databasement/self-hosting/configuration/sso"
+                link="{{ config('app.documentation_url') }}/self-hosting/configuration/sso"
                 external
                 class="btn-ghost btn-sm"
             />

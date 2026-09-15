@@ -1,6 +1,6 @@
 apiVersion: v2
 name: databasement
-description: A Helm chart for Databasement - Database backup management application
+description: A Helm chart for Datacask - Database backup management application
 type: application
 version: 0.0.0-dev
 appVersion: "0.0.0-dev"
@@ -10,12 +10,11 @@ keywords:
   - mysql
   - postgresql
   - mariadb
-home: https://david-crty.github.io/databasement/
+home: https://hjdyzy.github.io/datacask/
 sources:
-  - https://github.com/David-Crty/databasement
+  - https://github.com/hjdyzy/datacask
 maintainers:
-  - name: David-Crty
-    email: david_courtey@yahoo.com
+  - name: hjdyzy
 annotations:
   artifacthub.io/license: MIT
   artifacthub.io/readme: README.md

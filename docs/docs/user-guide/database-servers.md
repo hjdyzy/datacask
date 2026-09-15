@@ -4,11 +4,11 @@ sidebar_position: 2
 
 # Database Servers
 
-Database servers are the source of your backups. Databasement can connect to and backup MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, and Redis/Valkey servers.
+Database servers are the source of your backups. Datacask can connect to and backup MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, and Redis/Valkey servers.
 
 ## Supported Versions
 
-Databasement uses standard CLI tools to perform backup and restore operations. The table below shows which database engine versions are supported, based on the CLI tools shipped in the Docker image.
+Datacask uses standard CLI tools to perform backup and restore operations. The table below shows which database engine versions are supported, based on the CLI tools shipped in the Docker image.
 
 | Engine     | Supported Versions           | CLI Tool                     | Restore |
 |------------|------------------------------|------------------------------|---------|
@@ -23,12 +23,12 @@ Databasement uses standard CLI tools to perform backup and restore operations. T
 | Valkey     | 7.2+                         | `redis-cli --rdb`            | No      |
 
 :::info How this works
-- **MySQL / MariaDB**: Databasement ships the MariaDB 11.4 client (`mariadb-dump`), which is wire-protocol compatible with MySQL servers. On MySQL 26.0 and later, stored procedures and functions are left out of the dump: the client reads MySQL's new YY.M version number (9.7 → 26.7) as a MariaDB one and asks for stored packages, which MySQL rejects. Tables, data, views and triggers are unaffected, and the job logs a warning.
-- **PostgreSQL**: Databasement ships both the v16 and the v18 client and runs whichever one matches the server: v16 for servers up to 16, v18 for 17 and later. A dump only replays into a server at least as new as the client that wrote it, so a single v18 client would produce snapshots that no server below 17 could restore, not even the one they came from. Each client dumps from any server back to 9.2. Versions below 12 have reached end-of-life and are not recommended.
+- **MySQL / MariaDB**: Datacask ships the MariaDB 11.4 client (`mariadb-dump`), which is wire-protocol compatible with MySQL servers. On MySQL 26.0 and later, stored procedures and functions are left out of the dump: the client reads MySQL's new YY.M version number (9.7 → 26.7) as a MariaDB one and asks for stored packages, which MySQL rejects. Tables, data, views and triggers are unaffected, and the job logs a warning.
+- **PostgreSQL**: Datacask ships both the v16 and the v18 client and runs whichever one matches the server: v16 for servers up to 16, v18 for 17 and later. A dump only replays into a server at least as new as the client that wrote it, so a single v18 client would produce snapshots that no server below 17 could restore, not even the one they came from. Each client dumps from any server back to 9.2. Versions below 12 have reached end-of-life and are not recommended.
 - **SQL Server**: Backups are extracted as `.dacpac` files (schema + table data) using Microsoft's `sqlpackage` CLI (`/Action:Extract`) and re-applied with `/Action:Publish`. Server-bound objects (logins, users, permissions, role memberships) are excluded so backups stay portable across instances and don't fail on Windows-auth principals like `[NT AUTHORITY\SYSTEM]`. Works against on-prem SQL Server 2017+ and Azure SQL Database. Connections use the `pdo_sqlsrv` PHP extension.
 - **MongoDB**: The MongoDB Database Tools (`mongodump` / `mongorestore`) officially support server versions 4.2 through 8.0.
 - **SQLite**: Backups are performed by copying the database file over SFTP. The SQLite 3.x file format has been backwards-compatible since 3.0.0 (2004).
-- **Firebird**: Backups use `gbak` to produce a portable `.fbk` transportable backup file; restore replays it with `gbak -rep`, which replaces the target `.fdb` if one already exists. Databasement ships the Firebird 5 client, which can back up and restore Firebird 3.x, 4.x, and 5.x servers. Each `.fdb` file on the server is its own database, so backup configuration is path-based (like SQLite) rather than name-based.
+- **Firebird**: Backups use `gbak` to produce a portable `.fbk` transportable backup file; restore replays it with `gbak -rep`, which replaces the target `.fdb` if one already exists. Datacask ships the Firebird 5 client, which can back up and restore Firebird 3.x, 4.x, and 5.x servers. Each `.fdb` file on the server is its own database, so backup configuration is path-based (like SQLite) rather than name-based.
 - **Redis / Valkey**: `redis-cli --rdb` creates a point-in-time RDB snapshot via the replication protocol. Valkey 7.2+ is supported as a drop-in replacement for Redis. Restore is not supported.
 :::
 
@@ -110,7 +110,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO databasement;
 ```
 
 :::note[Single database only]
-For single-database access without `CREATEDB`, the target database must already exist. Grant `ALL PRIVILEGES` on that specific database and its schema. The user won't be able to drop/recreate the database during restore - Databasement will drop and recreate tables instead.
+For single-database access without `CREATEDB`, the target database must already exist. Grant `ALL PRIVILEGES` on that specific database and its schema. The user won't be able to drop/recreate the database during restore - Datacask will drop and recreate tables instead.
 :::
 
 **In-place restores need ownership, not just privileges.** `GRANT ALL PRIVILEGES` does not make the role the owner of existing tables or of the `public` schema, and only an owner may drop or recreate them, so restoring into a database whose objects belong to another role fails with `must be owner of table ...`. Grant `databasement` membership in the role that owns them: PostgreSQL accepts a member of the owning role wherever it requires the owner, so nothing has to change hands.
@@ -183,7 +183,7 @@ Redis/Valkey supports backup only. Restore is not currently supported due to the
 
 ### SQLite
 
-SQLite databases are backed up by copying the database file directly. Databasement connects to the remote server via SFTP (through an SSH tunnel) to access the file.
+SQLite databases are backed up by copying the database file directly. Datacask connects to the remote server via SFTP (through an SSH tunnel) to access the file.
 
 #### Connection settings
 
@@ -192,7 +192,7 @@ SQLite databases are backed up by copying the database file directly. Databaseme
 | Database paths | One or more absolute paths to `.sqlite` files on the remote server |
 
 :::note
-SQLite requires an SSH tunnel to access remote database files. Databasement uses SFTP over the tunnel to copy and restore files.
+SQLite requires an SSH tunnel to access remote database files. Datacask uses SFTP over the tunnel to copy and restore files.
 :::
 
 ### Firebird
@@ -224,7 +224,7 @@ Restore is performed with `gbak -rep`, which writes a fresh `.fdb` at the target
 
 ## Browsing Data with Adminer
 
-Databasement can launch [Adminer](https://www.adminer.org/) directly against a registered server to inspect schema and run queries from the browser. Supported for **MySQL**, **PostgreSQL**, and **SQLite** servers that connect without an SSH tunnel.
+Datacask can launch [Adminer](https://www.adminer.org/) directly against a registered server to inspect schema and run queries from the browser. Supported for **MySQL**, **PostgreSQL**, and **SQLite** servers that connect without an SSH tunnel.
 
 Access is controlled by the `use-adminer` ability, held by **Admin** in the seeded defaults. A Super Admin can grant or revoke it on any role under **Configuration → Roles**. For roles that hold the ability, a *Browse* action appears on compatible servers in the Database Servers list and opens Adminer pre-authenticated with the server's stored credentials.
 
@@ -242,7 +242,7 @@ Access is controlled by the `use-adminer` ability, held by **Admin** in the seed
 
 ### Docker Networking
 
-When running Databasement in Docker and connecting to databases in other containers, you need to ensure network connectivity between them.
+When running Datacask in Docker and connecting to databases in other containers, you need to ensure network connectivity between them.
 
 #### Containers in Different docker-compose Projects
 
@@ -269,7 +269,7 @@ By default, each docker-compose project creates its own isolated network. To con
        external: true
    ```
 
-3. In Databasement's `docker-compose.yml`, add the same network:
+3. In Datacask's `docker-compose.yml`, add the same network:
    ```yaml
    services:
      app:
@@ -298,7 +298,7 @@ docker network ls
 docker inspect <container_name> | grep -A 20 "Networks"
 ```
 
-Then connect Databasement to that network:
+Then connect Datacask to that network:
 ```yaml
 networks:
   other-project_default:
@@ -319,12 +319,12 @@ For containers started with `docker run`:
    docker run -d --name mysql --network my-network mysql:8
    ```
 
-3. Connect Databasement to the same network:
+3. Connect Datacask to the same network:
    ```bash
    docker network connect my-network databasement-app
    ```
 
-4. Use the container name (`mysql`) as the host in Databasement.
+4. Use the container name (`mysql`) as the host in Datacask.
 
 #### Using Host Network Mode
 
@@ -359,6 +359,6 @@ Ensure your firewall allows connections:
 
 ## SSH Tunnel
 
-Connect to databases that aren't directly reachable from Databasement — in private networks, behind a bastion/jump host, or on a remote Docker host whose database ports aren't exposed. Databasement opens the tunnel before each backup/restore and closes it afterward, with credentials encrypted at rest.
+Connect to databases that aren't directly reachable from Datacask — in private networks, behind a bastion/jump host, or on a remote Docker host whose database ports aren't exposed. Datacask opens the tunnel before each backup/restore and closes it afterward, with credentials encrypted at rest.
 
 See [SSH Tunnel](./ssh-tunnel.md) for configuration and for backing up databases on a remote host.

@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # Docker Compose
 
-This guide will help you deploy Databasement using Docker Compose. This method is ideal when you want to run Databasement alongside its own dedicated database container.
+This guide will help you deploy Datacask using Docker Compose. This method is ideal when you want to run Datacask alongside its own dedicated database container.
 
 ## Prerequisites
 
@@ -16,13 +16,13 @@ This guide will help you deploy Databasement using Docker Compose. This method i
 ### 1. Create Project Directory
 
 ```bash
-mkdir databasement && cd databasement
+mkdir datacask && cd datacask
 ```
 
 ### 2. Generate Application Key
 
 ```bash
-docker run --rm davidcrty/databasement:1 php artisan key:generate --show
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
 ```
 
 Save this key for the next step.
@@ -83,8 +83,8 @@ To store backups in AWS S3 or S3-compatible storage (MinIO, DigitalOcean Spaces,
 ```yaml title="docker-compose.yml"
 services:
   app:
-    image: davidcrty/databasement:1
-    container_name: databasement
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    container_name: datacask
     restart: unless-stopped
     ports:
       - "2226:2226"
@@ -98,7 +98,7 @@ services:
       retries: 5
 
   worker:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     restart: unless-stopped
     deploy:
       replicas: 1   # increase to run more backups in parallel
@@ -116,8 +116,8 @@ services:
 ```yaml title="docker-compose.yml"
 services:
   app:
-    image: davidcrty/databasement:1
-    container_name: databasement
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    container_name: datacask
     restart: unless-stopped
     ports:
       - "2226:2226"
@@ -134,7 +134,7 @@ services:
       retries: 5
 
   worker:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     restart: unless-stopped
     deploy:
       replicas: 1   # increase to run more backups in parallel
@@ -150,7 +150,7 @@ services:
 
   mysql:
     image: mysql:8.0
-    container_name: databasement-mysql
+    container_name: datacask-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: your-root-password
@@ -171,8 +171,8 @@ services:
 ```yaml title="docker-compose.yml"
 services:
   app:
-    image: davidcrty/databasement:1
-    container_name: databasement
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
+    container_name: datacask
     restart: unless-stopped
     ports:
       - "2226:2226"
@@ -189,7 +189,7 @@ services:
       retries: 5
 
   worker:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     restart: unless-stopped
     deploy:
       replicas: 1   # increase to run more backups in parallel
@@ -205,7 +205,7 @@ services:
 
   postgres:
     image: postgres:16
-    container_name: databasement-postgres
+    container_name: datacask-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: databasement
@@ -255,7 +255,7 @@ curl http://localhost:2226/health
 Open http://localhost:2226 in your browser.
 
 :::note
-To expose your Databasement instance with HTTPS, you can use Traefik as a reverse proxy. For detailed instructions on
+To expose your Datacask instance with HTTPS, you can use Traefik as a reverse proxy. For detailed instructions on
 how to configure Traefik with Docker, please refer to
 the [official Traefik documentation](https://doc.traefik.io/traefik/expose/docker/).
 
@@ -270,14 +270,14 @@ By default, the application runs as PUID/PGID `1000`. You can customize this usi
 ```yaml title="docker-compose.yml"
 services:
   app:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     environment:
       PUID: 1001
       PGID: 1001
     # ... rest of config
 
   worker:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     environment:
       PUID: 1001
       PGID: 1001
@@ -295,12 +295,12 @@ For rootless Docker or Podman environments, use the `user` directive. When using
 ```yaml
 services:
   app:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     user: "1010:1010"
     # ... rest of config
 
   worker:
-    image: davidcrty/databasement:1
+    image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
     user: "1010:1010"
     # ... rest of config
 ```

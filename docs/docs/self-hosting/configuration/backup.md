@@ -115,7 +115,7 @@ You can find a server's ID in its detail page.
 
 ## S3 Storage
 
-Databasement supports AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces, etc.) for backup volumes.
+Datacask supports AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces, etc.) for backup volumes.
 
 All S3 settings (region, credentials, endpoints) are configured **per-volume** in the web UI when creating or editing an S3 volume. See the [Volumes user guide](../../user-guide/volumes#s3-storage) for field descriptions.
 

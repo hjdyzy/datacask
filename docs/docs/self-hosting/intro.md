@@ -4,13 +4,13 @@ sidebar_position: 1
 
 # Introduction
 
-Welcome to the **Self-Hosting** section of the **Databasement documentation**!
+Welcome to the **Self-Hosting** section of the **Datacask documentation**!
 
-Databasement is a web application for managing database server backups. It allows you to register database servers (MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, Redis/Valkey), test connections, schedule automated backups, and restore snapshots to any registered server.
+Datacask is a web application for managing database server backups. It allows you to register database servers (MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, Redis/Valkey), test connections, schedule automated backups, and restore snapshots to any registered server.
 
 ## Getting Started
 
-We provide guides to deploy Databasement using:
+We provide guides to deploy Datacask using:
 
 - [**Docker**](docker) - Single container deployment (recommended for most users)
 - [**Docker Compose**](docker-compose) - Multi-container setup with external database
@@ -21,7 +21,7 @@ See [Versioning](versioning) for available Docker image tags and Helm chart vers
 
 ## Requirements
 
-Databasement runs in a single container that includes:
+Datacask runs in a single container that includes:
 - FrankenPHP web server
 - Queue worker for async backup/restore jobs
 - Scheduler for automated backups
@@ -39,21 +39,21 @@ The only external requirement is a database for the application itself:
 | MariaDB    | 10.3+           | 11.x        |
 | PostgreSQL | 10.0+           | 16+         |
 
-These are the databases Databasement uses to store its own configuration, users, and backup metadata -- not the databases you back up (see [Supported Versions](../user-guide/database-servers#supported-versions) for that).
+These are the databases Datacask uses to store its own configuration, users, and backup metadata -- not the databases you back up (see [Supported Versions](../user-guide/database-servers#supported-versions) for that).
 
 ## Quick Start
 
-The fastest way to try Databasement:
+The fastest way to try Datacask:
 
 ```bash
 docker run -d \
-  --name databasement \
+  --name datacask \
   -p 2226:2226 \
   -e DB_CONNECTION=sqlite \
   -e DB_DATABASE=/data/database.sqlite \
   -e ENABLE_QUEUE_WORKER=true \
-  -v ./databasement-data:/data \
-  davidcrty/databasement:1
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 ```
 
 Then open http://localhost:2226 in your browser and create your first admin account.
@@ -64,4 +64,4 @@ This quick start uses SQLite for the application database. For production deploy
 
 ## Support
 
-If you encounter issues with self-hosting, please open an issue on [GitHub](https://github.com/David-Crty/databasement/issues).
+If you encounter issues with self-hosting, please open an issue on [GitHub](https://github.com/hjdyzy/datacask/issues).

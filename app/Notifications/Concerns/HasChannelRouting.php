@@ -5,6 +5,7 @@ namespace App\Notifications\Concerns;
 use App\Notifications\Channels\DiscordWebhookChannel;
 use App\Notifications\Channels\GotifyChannel;
 use App\Notifications\Channels\WebhookChannel;
+use App\Notifications\Channels\WeComChannel;
 use App\Notifications\NotificationMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Slack\SlackMessage;
@@ -30,6 +31,7 @@ trait HasChannelRouting
         'pushover' => PushoverChannel::class,
         'gotify' => GotifyChannel::class,
         'discord_webhook' => DiscordWebhookChannel::class,
+        'wecom' => WeComChannel::class,
         'webhook' => WebhookChannel::class,
     ];
 
@@ -93,6 +95,14 @@ trait HasChannelRouting
     public function toGotify(object $notifiable): array
     {
         return $this->getMessage()->toGotify();
+    }
+
+    /**
+     * @return array{msgtype: string, markdown: array{content: string}}
+     */
+    public function toWeCom(object $notifiable): array
+    {
+        return $this->getMessage()->toWeCom();
     }
 
     /**

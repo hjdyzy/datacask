@@ -12,7 +12,7 @@
             <x-button
                 :label="__('Documentation')"
                 icon="o-book-open"
-                link="https://david-crty.github.io/databasement/user-guide/permissions"
+                link="{{ config('app.documentation_url') }}/user-guide/permissions"
                 external
                 class="btn-ghost btn-sm"
             />

@@ -4,7 +4,7 @@ sidebar_position: 10
 
 # MCP Server
 
-Databasement includes a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants manage your database backups through natural language.
+Datacask includes a built-in [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants manage your database backups through natural language.
 
 ## What is MCP?
 
@@ -32,7 +32,7 @@ The MCP server is available at `/mcp`, protected by [Sanctum](https://laravel.co
 
 ### 1. Create an API Token
 
-Go to **Settings → API Tokens** in the Databasement UI and create a new token.
+Go to **Settings → API Tokens** in the Datacask UI and create a new token.
 
 ### 2. Configure Your AI Client
 
@@ -54,7 +54,7 @@ Add the following to your MCP client configuration (e.g., `~/.claude/settings.js
 }
 ```
 
-Replace the URL with your Databasement instance address and the token with the one generated in step 1.
+Replace the URL with your Datacask instance address and the token with the one generated in step 1.
 
 Tools will appear natively in your AI client (e.g., as `mcp__databasement__trigger-backup-tool` in Claude Code).
 

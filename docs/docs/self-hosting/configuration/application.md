@@ -26,7 +26,7 @@ This only covers the API. The web UI is unaffected: Livewire requests, including
 API_RATE_LIMIT=600
 ```
 
-Set it to `0` to turn throttling off, for instance when a reverse proxy or API gateway in front of Databasement already enforces its own limits.
+Set it to `0` to turn throttling off, for instance when a reverse proxy or API gateway in front of Datacask already enforces its own limits.
 
 Agent daemon endpoints (`/api/v1/agent/*`) are excluded from `API_RATE_LIMIT` entirely: agents poll on a fixed interval and have their own protection against repeated authentication failures.
 
@@ -36,7 +36,7 @@ Agent daemon endpoints (`/api/v1/agent/*`) are excluded from `API_RATE_LIMIT` en
 The `APP_KEY` is required for encryption. Generate one with:
 
 ```bash
-docker run --rm davidcrty/databasement:1 php artisan key:generate --show
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest php artisan key:generate --show
 ```
 
 Copy the output (e.g., `base64:xxxx...`) and set it as `APP_KEY`.
@@ -55,7 +55,7 @@ Data is always stored in UTC internally. If you previously set `TZ`, it is migra
 
 ## Database Configuration
 
-Databasement needs a database to store its own data (users, servers, backup configurations).
+Datacask needs a database to store its own data (users, servers, backup configurations).
 
 ### SQLite (Simplest)
 
@@ -70,7 +70,7 @@ When using SQLite, make sure to mount a volume for `/data` to persist data.
 
 ### MySQL / MariaDB
 
-Create a database and user for Databasement on your MySQL server:
+Create a database and user for Datacask on your MySQL server:
 
 **MySQL:**
 ```sql
@@ -91,7 +91,7 @@ DB_PASSWORD=your-secure-password
 
 ### PostgreSQL
 
-Create a database and user for Databasement on your PostgreSQL server:
+Create a database and user for Datacask on your PostgreSQL server:
 
 **PostgreSQL:**
 ```sql
@@ -148,7 +148,7 @@ APP_URL=https://backup.yourdomain.com
 APP_KEY=base64:your-generated-key-here
 # APP_DISPLAY_TIMEZONE=UTC  # timezone for UI, backup filenames, and schedules
 
-# Database (for Databasement itself)
+# Database (for Datacask itself)
 DB_CONNECTION=mysql
 DB_HOST=mysql.yourdomain.com
 DB_PORT=3306
@@ -219,4 +219,4 @@ The command prompts for the new password (hidden input) and validates it against
 ### Get Help
 
 - Check the logs: `docker compose logs app`
-- Report issues on [GitHub](https://github.com/david-crty/databasement/issues)
+- Report issues on [GitHub](https://github.com/hjdyzy/datacask/issues)

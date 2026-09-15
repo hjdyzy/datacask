@@ -3,15 +3,11 @@ sidebar_position: 0
 slug: /
 ---
 
-![Databasement Banner](/img/banner-v2.png)
+# Datacask Documentation
 
-# Databasement Documentation
+Welcome to the **Datacask** documentation!
 
-Welcome to the **Databasement** documentation!
-
-> **Try it out!** Explore the [live demo](https://databasement-demo.crty.dev/) to see Databasement in action.
-
-Databasement is a web application for managing database server backups. It allows you to register database servers (MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, Redis/Valkey), test connections, schedule automated backups, and restore snapshots to any registered server.
+Datacask is a self-hosted web application for managing database server backups. It allows you to register database servers (MySQL, PostgreSQL, MariaDB, Microsoft SQL Server, MongoDB, SQLite, Firebird, Redis/Valkey), test connections, schedule automated backups, and restore snapshots to any registered server.
 
 ## Features
 
@@ -20,7 +16,7 @@ Databasement is a web application for managing database server backups. It allow
 - **Automated backups**: Schedule recurring backups with customizable retention
 - **Storage volumes**: Store backups locally, on S3-compatible storage, Azure Blob Storage, Samba/SMB shares, or via SFTP/FTP
 - **Cross-server restore**: Restore snapshots from one server to another
-- **Failure notifications**: Get alerted via Email, Slack, Discord, Telegram, Pushover, Gotify, or Webhook when jobs fail
+- **Backup notifications**: Receive backup and restore alerts through Email, Slack, Discord, Telegram, Pushover, Gotify, WeCom, or Webhook
 - **User management**: Multi-user support with two-factor authentication
 - **Automation**: REST API and MCP server for scripting, CI/CD, and AI assistant integration
 - **Simple deployment**: Single container with built-in web server, queue worker, and scheduler
@@ -30,13 +26,13 @@ Databasement is a web application for managing database server backups. It allow
 ```bash
 # Run the container
 docker run -d \
-  --name databasement \
+  --name datacask \
   -p 2226:2226 \
   -e DB_CONNECTION=sqlite \
   -e DB_DATABASE=/data/database.sqlite \
   -e ENABLE_QUEUE_WORKER=true \
-  -v ./databasement-data:/data \
-  davidcrty/databasement:1
+  -v ./datacask-data:/data \
+  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 ```
 
 Open http://localhost:2226 and create your first admin account.
@@ -47,7 +43,7 @@ Open http://localhost:2226 and create your first admin account.
 
 ### Self-Hosting
 
-Learn how to deploy Databasement on your own infrastructure:
+Learn how to deploy Datacask on your own infrastructure:
 
 - [Introduction](self-hosting/intro) - Overview and requirements
 - [Configuration](self-hosting/configuration) - Environment variables reference
@@ -58,7 +54,7 @@ Learn how to deploy Databasement on your own infrastructure:
 
 ### User Guide
 
-Learn how to use Databasement:
+Learn how to use Datacask:
 
 - [Getting Started](user-guide/intro) - First steps after installation
 - [Database Servers](user-guide/database-servers) - Managing database connections
@@ -68,11 +64,11 @@ Learn how to use Databasement:
 
 ### Contributing
 
-Want to contribute to Databasement?
+Want to contribute to Datacask?
 
 - [Development Guide](contributing/development) - Set up a local development environment
 
 ## Quick Links
 
-- [GitHub Repository](https://github.com/David-Crty/databasement)
-- [Report an Issue](https://github.com/David-Crty/databasement/issues)
+- [GitHub Repository](https://github.com/hjdyzy/datacask)
+- [Report an Issue](https://github.com/hjdyzy/datacask/issues)

@@ -108,7 +108,7 @@
                 <x-button
                     :label="__('Documentation')"
                     icon="o-book-open"
-                    link="https://david-crty.github.io/databasement/self-hosting/configuration/backup"
+                    link="{{ config('app.documentation_url') }}/self-hosting/configuration/backup"
                     external
                     class="btn-ghost btn-sm"
                 />
@@ -125,7 +125,7 @@
                             {{ __('Compression algorithm used for backup files.') }}
                             @if ($form->compression === 'encrypted')
                                 {{ __('To customise the encryption key, check the') }}
-                                <a href="https://david-crty.github.io/databasement/self-hosting/configuration/backup" target="_blank" class="link link-primary underline-offset-2">{{ __('documentation') }}</a>.
+                                <a href="{{ config('app.documentation_url') }}/self-hosting/configuration/backup" target="_blank" class="link link-primary underline-offset-2">{{ __('documentation') }}</a>.
                             @endif
                         </x-slot:description>
                         <x-select wire:model.live="form.compression" :options="$compressionOptions" :disabled="!$this->canManage" />
@@ -265,7 +265,7 @@
                         <x-slot:actions>
                             <x-button
                                 :label="__('Learn more')"
-                                link="https://david-crty.github.io/databasement/self-hosting/configuration/backup#hook-scripts"
+                                link="{{ config('app.documentation_url') }}/self-hosting/configuration/backup#hook-scripts"
                                 external
                                 icon="o-book-open"
                                 class="btn-sm"

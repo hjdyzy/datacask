@@ -4,7 +4,7 @@ sidebar_position: 8
 
 # Organizations
 
-Databasement supports multi-organization setups, allowing you to isolate resources (database servers, volumes, agents, snapshots) between teams or projects.
+Datacask supports multi-organization setups, allowing you to isolate resources (database servers, volumes, agents, snapshots) between teams or projects.
 
 ## Concepts
 

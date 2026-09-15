@@ -1,12 +1,23 @@
 # Changelog
 
-All notable changes to Databasement are documented here. The format follows
+All notable changes to Datacask are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Each section covers one minor version; every entry is prefixed with the patch release
 that shipped it. Releases before 1.0.0 are only listed on
-[GitHub Releases](https://github.com/David-Crty/databasement/releases).
+[GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
+are inherited from Databasement and keep their original upstream pull request links.
+
+## [Unreleased]
+
+### Added
+
+- Native Enterprise WeChat group robot notifications.
+
+### Changed
+
+- Product, documentation, release, container image, and Helm links now use Datacask resources.
 
 ## [1.7] - 2026-09-07
 

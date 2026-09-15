@@ -1,4 +1,4 @@
-# Extending Databasement
+# Extending Datacask
 
 Step-by-step playbooks for the rare, cross-cutting tasks of adding a new **database type**, **volume (storage) type**, or **notification channel**. These live here (rather than in `CLAUDE.md`) because they are only relevant when doing that specific task. When you start one of these tasks, read the matching section in full before editing.
 

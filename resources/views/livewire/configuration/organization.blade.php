@@ -16,7 +16,7 @@
             <x-button
                 :label="__('Documentation')"
                 icon="o-book-open"
-                link="https://david-crty.github.io/databasement/user-guide/organizations"
+                link="{{ config('app.documentation_url') }}/user-guide/organizations"
                 external
                 class="btn-ghost btn-sm"
             />

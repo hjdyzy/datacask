@@ -4,7 +4,7 @@ sidebar_position: 7
 
 # Native Ubuntu Installation
 
-This guide will help you install Databasement directly on Ubuntu without Docker. This is useful for environments where Docker is not available or when you prefer a traditional installation.
+This guide will help you install Datacask directly on Ubuntu without Docker. This is useful for environments where Docker is not available or when you prefer a traditional installation.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ sudo apt install -y \
 
 ## Install Database CLI Tools
 
-Databasement requires database CLI tools to perform backup and restore operations.
+Datacask requires database CLI tools to perform backup and restore operations.
 
 ### For MySQL/MariaDB backups
 
@@ -51,7 +51,7 @@ sudo apt install -y mariadb-client
 ```
 
 :::note
-Databasement uses the MariaDB CLI tools (`mariadb-dump`, `mariadb`) to back up and restore both MariaDB and MySQL servers.
+Datacask uses the MariaDB CLI tools (`mariadb-dump`, `mariadb`) to back up and restore both MariaDB and MySQL servers.
 :::
 
 ### For PostgreSQL backups
@@ -85,12 +85,12 @@ sudo apt install -y nodejs
 sudo apt install -y nginx
 ```
 
-## Download and Configure Databasement
+## Download and Configure Datacask
 
 ```bash
 # Clone the repository
-cd /var/www/databasement
-git clone https://github.com/David-Crty/databasement.git .
+cd /var/www/datacask
+git clone https://github.com/hjdyzy/datacask.git .
 
 # Install PHP dependencies
 composer install --no-dev --optimize-autoloader
@@ -123,10 +123,10 @@ APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://your-domain.com
 
-# Database for Databasement (choose one)
+# Database for Datacask (choose one)
 # SQLite (simplest)
 DB_CONNECTION=sqlite
-DB_DATABASE=/var/www/databasement/database/database.sqlite
+DB_DATABASE=/var/www/datacask/database/database.sqlite
 
 # Or MySQL
 # DB_CONNECTION=mysql
@@ -158,7 +158,7 @@ To store backups in AWS S3 or S3-compatible storage (MinIO, DigitalOcean Spaces,
 
 ```bash
 # Run migrations
-cd /var/www/databasement
+cd /var/www/datacask
 php artisan migrate --force
 ```
 
@@ -176,7 +176,7 @@ Add the following configuration:
 server {
     listen 80;
     server_name your-domain.com;
-    root /var/www/databasement/public;
+    root /var/www/datacask/public;
 
     add_header X-Frame-Options "SAMEORIGIN";
     add_header X-Content-Type-Options "nosniff";
@@ -229,7 +229,7 @@ Add the following:
 
 ```ini
 [Unit]
-Description=Databasement Queue Worker
+Description=Datacask Queue Worker
 After=network.target
 
 [Service]
@@ -237,7 +237,7 @@ User=www-data
 Group=www-data
 Restart=always
 RestartSec=5
-WorkingDirectory=/var/www/databasement
+WorkingDirectory=/var/www/datacask
 ExecStart=/usr/bin/php artisan queue:work --queue=backups,default --tries=3 --timeout=3600 --sleep=3 --max-jobs=1000
 
 [Install]
@@ -269,7 +269,7 @@ crontab -e
 Add this line:
 
 ```cron
-* * * * * cd /var/www/databasement && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /var/www/datacask && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 ## Verification
@@ -315,12 +315,12 @@ php artisan config:show database
 
 For additional troubleshooting options including debug mode and trusted proxy configuration, see the [Configuration Troubleshooting](./configuration/application#troubleshooting) section.
 
-## Updating Databasement
+## Updating Datacask
 
-Check the [GitHub Releases](https://github.com/David-Crty/databasement/releases) page for available versions, then update to a specific release:
+Check the [GitHub Releases](https://github.com/hjdyzy/datacask/releases) page for available versions, then update to a specific release:
 
 ```bash
-cd /var/www/databasement
+cd /var/www/datacask
 
 # Fetch tags and checkout the desired version
 git fetch --tags

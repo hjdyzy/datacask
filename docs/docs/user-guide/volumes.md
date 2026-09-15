@@ -4,22 +4,22 @@ sidebar_position: 7
 
 # Storage Volumes
 
-Storage volumes are the destinations where your backup files are stored. Databasement supports multiple storage backends to fit your infrastructure needs.
+Storage volumes are the destinations where your backup files are stored. Datacask supports multiple storage backends to fit your infrastructure needs.
 
 ## Volume Types
 
 ### Local Storage
 
-Local volumes store backups on the filesystem where Databasement is running. This is the simplest option for single-server setups.
+Local volumes store backups on the filesystem where Datacask is running. This is the simplest option for single-server setups.
 
 | Field | Description |
 |-------|-------------|
 | **Path** | Absolute path to the backup directory |
 
 :::info
-Ensure the Databasement container has write access to the specified path. You may need to mount a volume when running Docker:
+Ensure the Datacask container has write access to the specified path. You may need to mount a volume when running Docker:
 ```bash
-docker run -v /path/on/host:/backups davidcrty/databasement
+docker run -v /path/on/host:/backups registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask
 ```
 
 In multi-container setups (Docker Compose, Kubernetes), where the web server and the queue worker run as separate containers, the backup path must be mounted into **both** — the worker writes snapshots, and the web container reads them to serve downloads. The path (and every directory above it) must also be readable by the web container's application user: the worker often runs as root, so a host directory with `0700` root-only permissions lets backups succeed while downloads fail with a 404.
@@ -114,7 +114,7 @@ SMB volumes store backups on a Windows file share or a Samba server (common on N
 | **Root Directory** | Base path inside the share (e.g., `/databasement`) |
 
 :::note
-SMB support is built into the Databasement Docker image and connects over SMB2/SMB3 — no host mounts or extra packages needed.
+SMB support is built into the Datacask Docker image and connects over SMB2/SMB3 — no host mounts or extra packages needed.
 :::
 
 :::tip
@@ -123,7 +123,7 @@ The password is encrypted at rest in the database using Laravel's encryption. It
 
 ### NFS Storage
 
-NFS does not have a dedicated volume type because there is no NFS client at the application layer — NFS is mounted by the operating system. To use an NFS export as a backup destination, **mount it where Databasement runs and point a [Local](#local-storage) volume at the mount path**.
+NFS does not have a dedicated volume type because there is no NFS client at the application layer — NFS is mounted by the operating system. To use an NFS export as a backup destination, **mount it where Datacask runs and point a [Local](#local-storage) volume at the mount path**.
 
 For example, with Docker Compose:
 

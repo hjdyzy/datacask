@@ -91,6 +91,16 @@ class NotificationChannelFactory extends Factory
         ]);
     }
 
+    public function wecom(): static
+    {
+        return $this->state(fn () => [
+            'type' => 'wecom',
+            'config' => [
+                'webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key='.fake()->uuid(),
+            ],
+        ]);
+    }
+
     public function webhook(): static
     {
         return $this->state(fn () => [

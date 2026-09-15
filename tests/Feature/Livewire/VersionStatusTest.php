@@ -9,7 +9,7 @@ use Tests\Support\VersionStatusWithoutGit;
 
 beforeEach(function () {
     config(['app.version' => null, 'app.commit_hash' => null]);
-    Cache::forget('github_latest_release');
+    Cache::forget('github_latest_release:'.sha1(config('app.github_repo')));
     Livewire::withoutLazyLoading();
 });
 
@@ -108,7 +108,8 @@ test('modal contains update instructions for all deployment methods', function (
         ->call('open')
         ->assertSee('docker compose pull')
         ->assertSee('helm repo update')
-        ->assertSee('docker pull davidcrty/databasement:1');
+        ->assertSee('helm upgrade datacask datacask/databasement')
+        ->assertSee('docker pull registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest');
 });
 
 test('github response is cached and reused on subsequent mounts', function () {
@@ -118,7 +119,7 @@ test('github response is cached and reused on subsequent mounts', function () {
     $user = User::factory()->create();
     Livewire::actingAs($user)->test(VersionStatus::class);
 
-    expect(Cache::get('github_latest_release'))->toBe('v1.2.3');
+    expect(Cache::get('github_latest_release:'.sha1(config('app.github_repo'))))->toBe('v1.2.3');
 
     // Second mount uses cache even when API fails
     Http::fake(['api.github.com/*' => Http::response([], 500)]);
@@ -131,7 +132,7 @@ test('github response is cached and reused on subsequent mounts', function () {
 
 test('stale cache is invalidated when app version is newer than cached latest', function () {
     // Simulate cache from before upgrade (old latest was v1.1.7)
-    Cache::put('github_latest_release', 'v1.1.7', now()->addDay());
+    Cache::put('github_latest_release:'.sha1(config('app.github_repo')), 'v1.1.7', now()->addDay());
     config(['app.version' => 'v1.2.0']);
 
     Http::fake(['api.github.com/*' => Http::response(['tag_name' => 'v1.2.0'])]);
@@ -143,7 +144,7 @@ test('stale cache is invalidated when app version is newer than cached latest', 
         ->assertSee(__('You are running the latest version'));
 
     // Cache should now hold the fresh value
-    expect(Cache::get('github_latest_release'))->toBe('v1.2.0');
+    expect(Cache::get('github_latest_release:'.sha1(config('app.github_repo'))))->toBe('v1.2.0');
 });
 
 test('github api failure is cached to avoid retries', function () {
@@ -154,22 +155,21 @@ test('github api failure is cached to avoid retries', function () {
         ->test(VersionStatus::class)
         ->assertSet('latestVersion', null);
 
-    expect(Cache::get('github_latest_release'))->toBe('');
+    expect(Cache::get('github_latest_release:'.sha1(config('app.github_repo'))))->toBe('');
 });
 
-test('version checks follow upstream releases', function () {
+test('version checks follow Datacask releases', function () {
     config([
         'app.github_repo' => 'https://github.com/hjdyzy/datacask',
-        'app.upstream_repo' => 'https://github.com/David-Crty/databasement',
         'app.version' => 'v1.0.0',
     ]);
     Http::fake([
-        'api.github.com/repos/David-Crty/databasement/releases/latest' => Http::response(['tag_name' => 'v1.2.0']),
+        'api.github.com/repos/hjdyzy/datacask/releases/latest' => Http::response(['tag_name' => 'v1.2.0']),
     ]);
 
     Livewire::actingAs(User::factory()->create())
         ->test(VersionStatus::class)
-        ->assertSet('releaseUrl', 'https://github.com/David-Crty/databasement/releases/tag/v1.2.0');
+        ->assertSet('releaseUrl', 'https://github.com/hjdyzy/datacask/releases/tag/v1.2.0');
 
-    Http::assertSent(fn ($request) => $request->url() === 'https://api.github.com/repos/David-Crty/databasement/releases/latest');
+    Http::assertSent(fn ($request) => $request->url() === 'https://api.github.com/repos/hjdyzy/datacask/releases/latest');
 });

@@ -79,7 +79,7 @@
 
         <div class="fieldset-label mt-1 text-xs">
             {{ __('Restoring over existing objects requires ownership of them, not just privileges.') }}
-            <a href="https://david-crty.github.io/databasement/user-guide/database-servers#postgresql"
+            <a href="{{ config('app.documentation_url') }}/user-guide/database-servers#postgresql"
                target="_blank"
                class="link link-primary underline-offset-2">{{ __('PostgreSQL permissions') }}</a>
         </div>
@@ -93,4 +93,3 @@
         />
     @endif
 @endif
-

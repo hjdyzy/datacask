@@ -32,7 +32,7 @@ should render deployment with default values:
                 - name: SERVER_NAME
                   value: :2226
                 - name: APP_NAME
-                  value: Databasement
+                  value: Datacask
                 - name: APP_ENV
                   value: production
                 - name: APP_DEBUG
@@ -54,7 +54,7 @@ should render deployment with default values:
                   value: warning
                 - name: ENABLE_DATABASE_MIGRATION
                   value: "false"
-              image: davidcrty/databasement:0.0.0-dev
+              image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:0.0.0-dev
               imagePullPolicy: Always
               livenessProbe:
                 failureThreshold: 3
@@ -102,7 +102,7 @@ should render deployment with default values:
                 - name: SERVER_NAME
                   value: :2226
                 - name: APP_NAME
-                  value: Databasement
+                  value: Datacask
                 - name: APP_ENV
                   value: production
                 - name: APP_DEBUG
@@ -124,7 +124,7 @@ should render deployment with default values:
                   value: warning
                 - name: ENABLE_DATABASE_MIGRATION
                   value: "false"
-              image: davidcrty/databasement:0.0.0-dev
+              image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:0.0.0-dev
               imagePullPolicy: Always
               name: databasement-worker
               resources:
@@ -147,7 +147,7 @@ should render deployment with default values:
                 - name: SERVER_NAME
                   value: :2226
                 - name: APP_NAME
-                  value: Databasement
+                  value: Datacask
                 - name: APP_ENV
                   value: production
                 - name: APP_DEBUG
@@ -169,7 +169,7 @@ should render deployment with default values:
                   value: warning
                 - name: ENABLE_DATABASE_MIGRATION
                   value: "false"
-              image: davidcrty/databasement:0.0.0-dev
+              image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:0.0.0-dev
               imagePullPolicy: Always
               name: databasement-migrations
               resources:
@@ -227,7 +227,7 @@ should render deployment with mysql database:
                 - name: SERVER_NAME
                   value: :2226
                 - name: APP_NAME
-                  value: Databasement
+                  value: Datacask
                 - name: APP_ENV
                   value: production
                 - name: APP_DEBUG
@@ -260,7 +260,7 @@ should render deployment with mysql database:
                   value: warning
                 - name: ENABLE_DATABASE_MIGRATION
                   value: "false"
-              image: davidcrty/databasement:0.0.0-dev
+              image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:0.0.0-dev
               imagePullPolicy: Always
               livenessProbe:
                 failureThreshold: 3
@@ -308,7 +308,7 @@ should render deployment with mysql database:
                 - name: SERVER_NAME
                   value: :2226
                 - name: APP_NAME
-                  value: Databasement
+                  value: Datacask
                 - name: APP_ENV
                   value: production
                 - name: APP_DEBUG
@@ -341,7 +341,7 @@ should render deployment with mysql database:
                   value: warning
                 - name: ENABLE_DATABASE_MIGRATION
                   value: "false"
-              image: davidcrty/databasement:0.0.0-dev
+              image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:0.0.0-dev
               imagePullPolicy: Always
               name: databasement-worker
               resources:
@@ -364,7 +364,7 @@ should render deployment with mysql database:
                 - name: SERVER_NAME
                   value: :2226
                 - name: APP_NAME
-                  value: Databasement
+                  value: Datacask
                 - name: APP_ENV
                   value: production
                 - name: APP_DEBUG
@@ -397,7 +397,7 @@ should render deployment with mysql database:
                   value: warning
                 - name: ENABLE_DATABASE_MIGRATION
                   value: "false"
-              image: davidcrty/databasement:0.0.0-dev
+              image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:0.0.0-dev
               imagePullPolicy: Always
               name: databasement-migrations
               resources:

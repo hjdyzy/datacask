@@ -12,7 +12,7 @@
             <x-button
                 :label="__('Documentation')"
                 icon="o-book-open"
-                link="https://david-crty.github.io/databasement/self-hosting/configuration/notification"
+                link="{{ config('app.documentation_url') }}/self-hosting/configuration/notification"
                 external
                 class="btn-ghost btn-sm"
             />
@@ -103,6 +103,8 @@
             @elseif ($channelForm->type === 'gotify')
                 <x-input wire:model="channelForm.config_url" :label="__('Server URL')" :placeholder="__('https://gotify.example.com')" required />
                 <x-password wire:model="channelForm.config_token" :label="__('App Token')" :placeholder="$channelForm->has_config_token ? '********' : ''" />
+            @elseif ($channelForm->type === 'wecom')
+                <x-password wire:model="channelForm.config_webhook_url" :label="__('Robot Webhook URL')" :placeholder="$channelForm->has_config_webhook_url ? '********' : ''" />
             @elseif ($channelForm->type === 'webhook')
                 <x-input wire:model="channelForm.config_url" :label="__('Webhook URL')" required />
                 <x-password wire:model="channelForm.config_secret" :label="__('Secret (optional)')" :placeholder="$channelForm->has_config_secret ? '********' : ''" />

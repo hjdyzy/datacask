@@ -36,7 +36,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     container:
-      image: davidcrty/databasement-php:latest
+      image: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask-php:latest
 
     services:
       mysql:

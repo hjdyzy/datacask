@@ -4,7 +4,7 @@ sidebar_position: 9
 
 # Permissions
 
-Databasement uses role-based access control built on [Bouncer](https://github.com/JosephSilber/bouncer). A **role** grants a set of **abilities**. Roles and their abilities are **global** (shared across the whole application); only the **assignment** of a role to a user is **per organization**.
+Datacask uses role-based access control built on [Bouncer](https://github.com/JosephSilber/bouncer). A **role** grants a set of **abilities**. Roles and their abilities are **global** (shared across the whole application); only the **assignment** of a role to a user is **per organization**.
 
 ## Roles are per organization
 
