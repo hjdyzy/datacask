@@ -11,7 +11,7 @@ class SnapshotPolicy
 {
     public function retry(User $user, Snapshot $snapshot): bool
     {
-        return $snapshot->job?->status === BackupJobStatus::Failed
+        return $snapshot->job->status === BackupJobStatus::Failed
             && $snapshot->backup !== null
             && ! ($snapshot->metadata['preflight_failure'] ?? false)
             && ! in_array($snapshot->database_name, ['(all databases)', '(preflight)'], true)

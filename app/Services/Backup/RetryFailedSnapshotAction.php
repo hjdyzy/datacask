@@ -56,8 +56,8 @@ class RetryFailedSnapshotAction
 
     private function validateSource(Snapshot $source, Backup $backup): void
     {
-        if (! $backup->databaseServer->backups_enabled || $source->job?->status !== BackupJobStatus::Failed
-            || ! is_string($source->database_name) || $source->database_name === ''
+        if (! $backup->databaseServer->backups_enabled || $source->job->status !== BackupJobStatus::Failed
+            || $source->database_name === ''
             || ($source->metadata['preflight_failure'] ?? false)
             || in_array($source->database_name, ['(all databases)', '(preflight)'], true)) {
             throw ValidationException::withMessages(['snapshot' => __('This failed backup cannot be retried.')]);
@@ -77,7 +77,7 @@ class RetryFailedSnapshotAction
         }
 
         if (Snapshot::query()->where('backup_id', $backup->id)->where('database_name', $name)
-            ->whereHas('job', fn ($query) => $query->inProgress())->exists()) {
+            ->whereHas('job', fn ($query) => $query->whereIn('status', [BackupJobStatus::Pending, BackupJobStatus::Running]))->exists()) {
             throw ValidationException::withMessages(['snapshot' => __('A backup for this database is already pending or running.')]);
         }
     }
