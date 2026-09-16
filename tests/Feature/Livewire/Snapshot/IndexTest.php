@@ -122,7 +122,8 @@ test('cannot retry a failed snapshot from another organization', function () {
     ]);
     $source = Snapshot::factory()->forServer($server)->failed()->create();
 
-    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertNotFound();
+    expect(fn () => Livewire::test(Index::class)->call('retryFailedBackup', $source->id))
+        ->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
 });
 
 test('shows pending and running snapshot rows as in-progress', function () {
