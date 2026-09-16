@@ -46,6 +46,7 @@ class Snapshot extends Model
         'method',
         'metadata',
         'triggered_by_user_id',
+        'retry_of_snapshot_id',
     ];
 
     protected function casts(): array

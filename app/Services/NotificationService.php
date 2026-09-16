@@ -10,6 +10,8 @@ use App\Models\Snapshot;
 use App\Notifications\BackupFailedNotification;
 use App\Notifications\BackupSuccessNotification;
 use App\Notifications\ChannelNotifiable;
+use App\Notifications\DatabaseOfflineNotification;
+use App\Notifications\DatabaseRecoveredNotification;
 use App\Notifications\RestoreFailedNotification;
 use App\Notifications\RestoreSuccessNotification;
 use App\Notifications\SnapshotsMissingNotification;
@@ -23,6 +25,17 @@ use NotificationChannels\Discord\Discord;
 
 class NotificationService
 {
+    public function notifyDatabaseOffline(DatabaseServer $server): void
+    {
+        $this->safely(fn () => $this->notifyServer($server, 'failure', new DatabaseOfflineNotification($server)));
+    }
+
+    public function notifyDatabaseRecovered(DatabaseServer $server): void
+    {
+        // Recovery belongs to the failure incident, even for failure-only channels.
+        $this->safely(fn () => $this->notifyServer($server, 'failure', new DatabaseRecoveredNotification($server)));
+    }
+
     public function notifyBackupFailed(Snapshot $snapshot, \Throwable $exception): void
     {
         $this->safely(fn () => $this->notifyServer(

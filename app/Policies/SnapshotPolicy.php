@@ -3,11 +3,21 @@
 namespace App\Policies;
 
 use App\Enums\Ability;
+use App\Enums\BackupJobStatus;
 use App\Models\Snapshot;
 use App\Models\User;
 
 class SnapshotPolicy
 {
+    public function retry(User $user, Snapshot $snapshot): bool
+    {
+        return $snapshot->job?->status === BackupJobStatus::Failed
+            && $snapshot->backup !== null
+            && ! ($snapshot->metadata['preflight_failure'] ?? false)
+            && ! in_array($snapshot->database_name, ['(all databases)', '(preflight)'], true)
+            && $user->can('backup', $snapshot->databaseServer);
+    }
+
     /**
      * Determine whether the user can view any models.
      * All authenticated users can view the list.

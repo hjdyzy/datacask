@@ -81,6 +81,10 @@ class DatabaseServer extends Model
         'notification_trigger',
         'notification_channel_selection',
         'organization_id',
+        'health_is_online',
+        'health_failure_count',
+        'health_success_count',
+        'health_checked_at',
     ];
 
     protected $hidden = [
@@ -97,6 +101,10 @@ class DatabaseServer extends Model
             'extra_config' => 'array',
             'notification_trigger' => NotificationTrigger::class,
             'notification_channel_selection' => NotificationChannelSelection::class,
+            'health_is_online' => 'boolean',
+            'health_failure_count' => 'integer',
+            'health_success_count' => 'integer',
+            'health_checked_at' => 'datetime',
         ];
     }
 

@@ -4,11 +4,15 @@ use App\Enums\Ability;
 use App\Enums\BackupJobStatus;
 use App\Livewire\Snapshot\Index;
 use App\Models\BackupJob;
+use App\Models\Agent;
+use App\Models\AgentJob;
 use App\Models\DatabaseServer;
 use App\Models\Snapshot;
 use App\Models\User;
 use App\Models\Volume;
 use App\Services\Backup\BackupJobFactory;
+use App\Jobs\ProcessBackupJob;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 use function Pest\Laravel\actingAs;
@@ -32,6 +36,93 @@ test('lists snapshots with completed jobs', function () {
     Livewire::test(Index::class)
         ->assertSee('visible_db')
         ->assertSee($snapshot->databaseServer->name);
+});
+
+test('retrying a failed snapshot creates a new pending job only for its database', function () {
+    Queue::fake();
+    $server = DatabaseServer::factory()->create(['database_names' => ['db_one', 'db_two']]);
+    $source = Snapshot::factory()->forServer($server)->failed()->create(['database_name' => 'db_two']);
+
+    Livewire::test(Index::class)
+        ->assertSee('Retry this database backup')
+        ->call('retryFailedBackup', $source->id);
+
+    $retry = Snapshot::where('retry_of_snapshot_id', $source->id)->firstOrFail();
+    expect($retry->database_name)->toBe('db_two')
+        ->and($retry->backup_id)->toBe($source->backup_id)
+        ->and($retry->method)->toBe('manual')
+        ->and($retry->job->status)->toBe(BackupJobStatus::Pending)
+        ->and($source->fresh()->job->status)->toBe(BackupJobStatus::Failed)
+        ->and(Snapshot::count())->toBe(2);
+
+    Queue::assertPushed(ProcessBackupJob::class, 1);
+
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertHasNoErrors();
+    expect(Snapshot::count())->toBe(2);
+});
+
+test('retry is forbidden without permission or for a completed snapshot', function () {
+    $source = Snapshot::factory()->failed()->create();
+    $completed = Snapshot::factory()->create();
+    actingAs(User::factory()->withAllAbilitiesExcept(Ability::RunBackups->value)->create());
+
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertForbidden();
+
+    actingAs($this->user);
+    Livewire::test(Index::class)->call('retryFailedBackup', $completed->id)->assertForbidden();
+});
+
+test('retry refuses a database removed from its backup rule and a disabled server', function () {
+    Queue::fake();
+    $server = DatabaseServer::factory()->create(['database_names' => ['old_db']]);
+    $source = Snapshot::factory()->forServer($server)->failed()->create(['database_name' => 'old_db']);
+    $server->backups()->firstOrFail()->update(['database_names' => ['new_db']]);
+
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id);
+    expect(Snapshot::count())->toBe(1);
+
+    $server->update(['backups_enabled' => false]);
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertForbidden();
+    Queue::assertNothingPushed();
+});
+
+test('retrying an agent-managed failure creates one agent job without a local queue job', function () {
+    Queue::fake();
+    $agent = Agent::factory()->create();
+    $server = DatabaseServer::factory()->create(['agent_id' => $agent->id, 'database_names' => ['db_one']]);
+    $source = Snapshot::factory()->forServer($server)->failed()->create(['database_name' => 'db_one']);
+
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id);
+
+    $retry = Snapshot::where('retry_of_snapshot_id', $source->id)->firstOrFail();
+    expect(AgentJob::where('snapshot_id', $retry->id)->count())->toBe(1);
+    Queue::assertNothingPushed();
+});
+
+test('preflight failures cannot be retried as database backups', function () {
+    Queue::fake();
+    $server = DatabaseServer::factory()->create(['database_selection_mode' => 'all']);
+    $source = Snapshot::factory()->forServer($server)->failed()->create([
+        'database_name' => '(all databases)',
+    ]);
+
+    Livewire::test(Index::class)
+        ->call('retryFailedBackup', $source->id)
+        ->assertForbidden();
+
+    expect(Snapshot::count())->toBe(1);
+    Queue::assertNothingPushed();
+});
+
+test('cannot retry a failed snapshot from another organization', function () {
+    $otherOrg = \App\Models\Organization::factory()->create();
+    $server = DatabaseServer::factory()->create([
+        'organization_id' => $otherOrg->id,
+        'database_names' => ['private_db'],
+    ]);
+    $source = Snapshot::factory()->forServer($server)->failed()->create();
+
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertNotFound();
 });
 
 test('shows pending and running snapshot rows as in-progress', function () {

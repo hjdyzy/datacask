@@ -100,7 +100,8 @@ class BackupJobFactory
         Backup $backup,
         string $databaseName,
         string $method,
-        ?int $triggeredByUserId = null
+        ?int $triggeredByUserId = null,
+        ?string $retryOfSnapshotId = null,
     ): Snapshot {
         $server = $backup->databaseServer;
         $volumes = $backup->volumes;
@@ -109,7 +110,7 @@ class BackupJobFactory
             throw new \RuntimeException("Backup [{$backup->id}] has no target volumes; nothing to back up to.");
         }
 
-        $snapshot = DB::transaction(function () use ($backup, $server, $volumes, $databaseName, $method, $triggeredByUserId) {
+        $snapshot = DB::transaction(function () use ($backup, $server, $volumes, $databaseName, $method, $triggeredByUserId, $retryOfSnapshotId) {
             $job = BackupJob::create(['status' => BackupJobStatus::Pending]);
 
             $snapshot = Snapshot::create([
@@ -126,6 +127,7 @@ class BackupJobFactory
                 'method' => $method,
                 'metadata' => Snapshot::generateMetadata($server, $databaseName, $volumes),
                 'triggered_by_user_id' => $triggeredByUserId,
+                'retry_of_snapshot_id' => $retryOfSnapshotId,
             ]);
 
             // The run's target volumes are frozen here — editing the backup
@@ -165,6 +167,7 @@ class BackupJobFactory
         };
 
         $snapshot = $this->createSnapshot($backup, $databaseName, $method, $triggeredByUserId);
+        $snapshot->update(['metadata' => array_merge($snapshot->metadata, ['preflight_failure' => true])]);
         $snapshot->job->log("Pre-flight failed: {$exception->getMessage()}", 'error', [
             'exception' => get_class($exception),
         ]);

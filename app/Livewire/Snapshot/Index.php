@@ -10,6 +10,7 @@ use App\Models\BackupJob;
 use App\Models\DatabaseServer;
 use App\Models\Snapshot;
 use App\Queries\SnapshotQuery;
+use App\Services\Backup\RetryFailedSnapshotAction;
 use App\Traits\Toast;
 use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
@@ -98,6 +99,20 @@ class Index extends Component
         $this->authorize('restoreFrom', $snapshot);
 
         $this->dispatch('open-restore-modal', mode: 'from-snapshot', snapshotId: $snapshotId);
+    }
+
+    public function retryFailedBackup(string $snapshotId, RetryFailedSnapshotAction $action): void
+    {
+        $snapshot = Snapshot::findOrFail($snapshotId);
+        $this->authorize('retry', $snapshot);
+
+        try {
+            $userId = auth()->id();
+            $action->execute($snapshot, is_int($userId) ? $userId : null);
+            $this->success(__('Backup started for :database.', ['database' => $snapshot->database_name]));
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->error($exception->errors()['snapshot'][0], timeout: 0);
+        }
     }
 
     /**

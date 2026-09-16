@@ -42,3 +42,5 @@ Schedule::command('snapshots:verify-files')
 
 // Recover stuck jobs (expired agent leases and timed-out backup jobs)
 Schedule::command('jobs:recover-stuck')->everyFiveMinutes();
+
+Schedule::command('databases:check-health')->everyFiveMinutes()->withoutOverlapping();

@@ -129,6 +129,14 @@
                     $canCancel = $status === 'pending' && $job;
                 @endphp
                 <div class="flex items-center gap-1 justify-end">
+                    @if($status === 'failed')
+                        @can('retry', $snapshot)
+                            <x-button icon="o-arrow-path"
+                                      wire:click="retryFailedBackup('{{ $snapshot->id }}')"
+                                      spinner :tooltip="__('Retry this database backup')"
+                                      class="btn-ghost btn-sm text-info" />
+                        @endcan
+                    @endif
                     @if($canRestore)
                         @can('restoreFrom', $snapshot)
                             <x-button
