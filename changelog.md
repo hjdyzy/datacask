@@ -17,6 +17,15 @@ are inherited from Databasement and keep their original upstream pull request li
 
 ## [Unreleased]
 
+## [1.7.14-dc.3] - 2026-09-16
+
+### Added
+
+- Check direct and SSH database connections every five minutes and notify on confirmed outages and recovery.
+- Re-run only the database from a failed snapshot without losing the original failure record.
+
+## [1.7.14-dc.2] - 2026-09-15
+
 ### Added
 
 - Native Enterprise WeChat group robot notifications.
