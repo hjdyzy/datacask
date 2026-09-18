@@ -173,10 +173,7 @@ class AgentRunCommand extends Command
 
             $selectionMode = $payload['selection_mode'] ?? '';
 
-            $databases = app(DatabaseProvider::class)->listDatabasesForServer(
-                $tempServer,
-                includeSystemDatabases: $selectionMode === 'excluded',
-            );
+            $databases = app(DatabaseProvider::class)->listDatabasesForServer($tempServer);
 
             if (($payload['selection_mode'] ?? '') === 'pattern' && ! empty($payload['pattern'])) {
                 $databases = DatabaseServer::filterDatabasesByPattern($databases, $payload['pattern']);

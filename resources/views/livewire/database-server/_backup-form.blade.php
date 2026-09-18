@@ -239,7 +239,7 @@
                                 searchable
                             />
                             <p class="text-xs text-base-content/60">
-                                {{ __('System databases are included unless you exclude them explicitly.') }}
+                                {{ __('System databases are automatically excluded.') }}
                             </p>
 
                             @php

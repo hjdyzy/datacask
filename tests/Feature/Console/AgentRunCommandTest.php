@@ -326,7 +326,9 @@ test('discovery job with excluded mode subtracts the exclusion list', function (
 
     $this->mock(\App\Services\Backup\Databases\DatabaseProvider::class, function ($mock) {
         $mock->shouldReceive('listDatabasesForServer')->once()
-            ->withArgs(fn (\App\Models\DatabaseServer $server, bool $includeSystemDatabases = false) => $includeSystemDatabases)
+            ->withArgs(function (\App\Models\DatabaseServer $server, ...$arguments): bool {
+                return $arguments === [];
+            })
             ->andReturn(['app_db', 'legacy_db', 'analytics_db']);
     });
 
@@ -370,7 +372,9 @@ test('discovery job with excluded mode fails when every database is excluded', f
 
     $this->mock(\App\Services\Backup\Databases\DatabaseProvider::class, function ($mock) {
         $mock->shouldReceive('listDatabasesForServer')->once()
-            ->withArgs(fn (\App\Models\DatabaseServer $server, bool $includeSystemDatabases = false) => $includeSystemDatabases)
+            ->withArgs(function (\App\Models\DatabaseServer $server, ...$arguments): bool {
+                return $arguments === [];
+            })
             ->andReturn(['only_db']);
     });
 

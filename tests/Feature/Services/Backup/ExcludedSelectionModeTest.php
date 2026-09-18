@@ -21,7 +21,9 @@ test('excluded mode backs up every database but the listed names', function () {
     $this->mock(DatabaseProvider::class, function ($mock) {
         $mock->shouldReceive('listDatabasesForServer')
             ->once()
-            ->withArgs(fn (DatabaseServer $server, bool $includeSystemDatabases = false) => $includeSystemDatabases)
+            ->withArgs(function (DatabaseServer $server, ...$arguments): bool {
+                return $arguments === [];
+            })
             ->andReturn(['app_db', 'legacy_db', 'staging_db', 'analytics_db']);
     });
 

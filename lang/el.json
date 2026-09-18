@@ -947,7 +947,7 @@
   "Super Admin": "Υπερδιαχειριστής",
   "Super admins can access all organizations and manage global settings.": "Οι υπερδιαχειριστές έχουν πρόσβαση σε όλους τους οργανισμούς και διαχειρίζονται τις γενικές ρυθμίσεις.",
   "system": "σύστημα",
-  "System databases are included unless you exclude them explicitly.": "Οι βάσεις δεδομένων συστήματος περιλαμβάνονται εκτός αν τις εξαιρέσετε ρητά.",
+  "System databases are automatically excluded.": "Οι βάσεις δεδομένων συστήματος εξαιρούνται αυτόματα.",
   "Target": "Προορισμός",
   "Target Database": "Βάση Δεδομένων Προορισμού",
   "Target database name": "Όνομα βάσης δεδομένων προορισμού",

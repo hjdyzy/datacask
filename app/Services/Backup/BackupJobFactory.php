@@ -108,7 +108,7 @@ class BackupJobFactory
     private function resolveExcludedDatabases(DatabaseServer $server, Backup $backup): array
     {
         $remaining = DatabaseServer::filterDatabasesByExclusion(
-            $this->databaseProvider->listDatabasesForServer($server, includeSystemDatabases: true),
+            $this->databaseProvider->listDatabasesForServer($server),
             $backup->database_names ?? [],
         );
 

@@ -947,7 +947,7 @@
   "Super Admin": "Superadministrador",
   "Super admins can access all organizations and manage global settings.": "Los superadministradores pueden acceder a todas las organizaciones y gestionar la configuración global.",
   "system": "sistema",
-  "System databases are included unless you exclude them explicitly.": "Las bases de datos del sistema se incluyen salvo que las excluya explícitamente.",
+  "System databases are automatically excluded.": "Las bases de datos del sistema se excluyen automáticamente.",
   "Target": "Destino",
   "Target Database": "Base de datos de destino",
   "Target database name": "Nombre de la base de datos de destino",

@@ -947,7 +947,7 @@
   "Super Admin": "超級管理員",
   "Super admins can access all organizations and manage global settings.": "超級管理員可以存取所有組織並管理全域設定。",
   "system": "系統",
-  "System databases are included unless you exclude them explicitly.": "除非明確排除，否則系統資料庫也會進行 Backup。",
+  "System databases are automatically excluded.": "系統資料庫將自動排除。",
   "Target": "目標",
   "Target Database": "目標資料庫",
   "Target database name": "目標資料庫名稱",

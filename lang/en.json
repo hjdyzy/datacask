@@ -947,7 +947,7 @@
     "Super Admin": "Super Admin",
     "Super admins can access all organizations and manage global settings.": "Super admins can access all organizations and manage global settings.",
     "system": "system",
-    "System databases are included unless you exclude them explicitly.": "System databases are included unless you exclude them explicitly.",
+    "System databases are automatically excluded.": "System databases are automatically excluded.",
     "Target": "Target",
     "Target Database": "Target Database",
     "Target database name": "Target database name",

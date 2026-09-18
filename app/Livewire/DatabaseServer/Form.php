@@ -153,9 +153,6 @@ class Form extends \Livewire\Form
     /** @var array<array{id: string, name: string}> */
     public array $availableDatabases = [];
 
-    /** Whether the current preview includes databases normally hidden by the handlers. */
-    public bool $availableDatabasesIncludeSystemDatabases = false;
-
     public bool $loadingDatabases = false;
 
     /**
@@ -236,15 +233,7 @@ class Form extends \Livewire\Form
             $this->backups[$index]['database_names_input'] = '';
         }
 
-        $includeSystemDatabases = $this->shouldIncludeSystemDatabasesInPreview();
-
-        if (! empty($this->availableDatabases)
-            && $this->availableDatabasesIncludeSystemDatabases === $includeSystemDatabases
-        ) {
-            return;
-        }
-
-        if ($this->server === null || $this->identifiesDatabasesByPath() || $this->isRedis()) {
+        if (! empty($this->availableDatabases) || $this->server === null || $this->identifiesDatabasesByPath() || $this->isRedis()) {
             return;
         }
 
@@ -254,7 +243,7 @@ class Form extends \Livewire\Form
             return;
         }
 
-        $this->loadAvailableDatabases($includeSystemDatabases);
+        $this->loadAvailableDatabases();
     }
 
     /**
@@ -318,8 +307,7 @@ class Form extends \Livewire\Form
     }
 
     /**
-     * Database options for the selected mode. Exclusion mode keeps the system
-     * databases visible so the user can decide whether to leave them out.
+     * Database options for the selected mode, excluding system databases.
      *
      * @return array<array{id: string, name: string}>
      */
@@ -847,21 +835,6 @@ class Form extends \Livewire\Form
         return ! empty($this->agent_id);
     }
 
-    /**
-     * Whether any backup card uses exclusion mode and therefore needs the
-     * system databases that the normal database picker hides.
-     */
-    private function shouldIncludeSystemDatabasesInPreview(): bool
-    {
-        foreach ($this->backups as $backup) {
-            if (($backup['database_selection_mode'] ?? null) === DatabaseSelectionMode::Excluded->value) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public function getSelectedAgent(): ?Agent
     {
         if (! $this->hasAgent()) {
@@ -1236,7 +1209,7 @@ class Form extends \Livewire\Form
 
         // If connection successful and supports per-database backups, load available databases
         if ($this->connectionTestSuccess && ! $this->identifiesDatabasesByPath() && ! $this->isRedis()) {
-            $this->loadAvailableDatabases($this->shouldIncludeSystemDatabasesInPreview());
+            $this->loadAvailableDatabases();
         }
     }
 
@@ -1336,7 +1309,7 @@ class Form extends \Livewire\Form
      * data, dead network) doesn't lock the edit form for PHP's full
      * max_execution_time.
      */
-    public function loadAvailableDatabases(bool $includeSystemDatabases = false): void
+    public function loadAvailableDatabases(): void
     {
         $this->loadingDatabases = true;
         $this->availableDatabases = [];
@@ -1360,10 +1333,7 @@ class Form extends \Livewire\Form
                 'extra_config' => $extraConfig,
             ], $sshConfig);
 
-            $databases = app(DatabaseProvider::class)->listDatabasesForServer(
-                $tempServer,
-                includeSystemDatabases: $includeSystemDatabases,
-            );
+            $databases = app(DatabaseProvider::class)->listDatabasesForServer($tempServer);
 
             // Format for select options
             $this->availableDatabases = collect($databases)
@@ -1380,7 +1350,6 @@ class Form extends \Livewire\Form
             $this->availableDatabases = [];
         }
 
-        $this->availableDatabasesIncludeSystemDatabases = $includeSystemDatabases;
         $this->loadingDatabases = false;
     }
 

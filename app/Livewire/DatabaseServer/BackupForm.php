@@ -55,6 +55,10 @@ final class BackupForm
      */
     public static function fromModel(Backup $backup): array
     {
+        $databaseNames = $backup->database_selection_mode === DatabaseSelectionMode::Excluded
+            ? self::filterSystemDatabaseNames($backup->database_names ?? [])
+            : ($backup->database_names ?? []);
+
         return [
             'id' => $backup->id,
             'volume_ids' => $backup->volumes->pluck('id')->all(),
@@ -66,8 +70,8 @@ final class BackupForm
             'gfs_keep_weekly' => $backup->gfs_keep_weekly ?? 4,
             'gfs_keep_monthly' => $backup->gfs_keep_monthly ?? 12,
             'database_selection_mode' => ($backup->database_selection_mode ?? DatabaseSelectionMode::All)->value,
-            'database_names' => $backup->database_names ?? [],
-            'database_names_input' => implode(', ', $backup->database_names ?? []),
+            'database_names' => $databaseNames,
+            'database_names_input' => implode(', ', $databaseNames),
             'database_include_pattern' => $backup->database_include_pattern ?? '',
         ];
     }
@@ -108,6 +112,33 @@ final class BackupForm
     }
 
     /**
+     * Whether a database name is a built-in system database.
+     */
+    public static function isSystemDatabaseName(string $name): bool
+    {
+        return in_array($name, [
+            'information_schema', 'performance_schema', 'mysql', 'sys',
+            'admin', 'local', 'config',
+            'master', 'tempdb', 'model', 'msdb',
+            'rdsadmin', 'azure_maintenance', 'azure_sys',
+        ], true);
+    }
+
+    /**
+     * Remove built-in system database names from an exclusion list.
+     *
+     * @param  array<int, string>  $names
+     * @return array<int, string>
+     */
+    private static function filterSystemDatabaseNames(array $names): array
+    {
+        return array_values(array_filter(
+            $names,
+            fn (string $name): bool => ! self::isSystemDatabaseName($name),
+        ));
+    }
+
+    /**
      * Normalize selection-mode related fields based on the parent server's
      * database type.
      *
@@ -138,6 +169,13 @@ final class BackupForm
         }
 
         $mode = $entry['database_selection_mode'] ?? null;
+
+        if ($mode === DatabaseSelectionMode::Excluded->value) {
+            $names = $entry['database_names'] ?? [];
+            $entry['database_names'] = self::filterSystemDatabaseNames(
+                is_array($names) ? $names : [],
+            );
+        }
 
         // Selected and Excluded both carry their meaning in `database_names`;
         // every other mode has no list to keep.
