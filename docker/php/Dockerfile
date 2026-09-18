@@ -8,6 +8,27 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS sqlpackage
 ARG SQLPACKAGE_VERSION=170.3.93
 RUN dotnet tool install --tool-path /opt/sqlpackage microsoft.sqlpackage --version "${SQLPACKAGE_VERSION}"
 
+
+# Build a MySQL 5.6-compatible dump client. MariaDB clients 11.x query
+# information_schema.columns.generation_expression, which MySQL 5.6 does
+# not expose and rejects with error 1054. Keep the modern client for other
+# servers and use this side-by-side binary only for MySQL < 5.7.
+FROM alpine:3.17 AS mysql56-client
+ARG TARGETARCH
+RUN apk add --no-cache mariadb-client \
+    && case "${TARGETARCH}" in \
+        amd64) MUSL_ARCH=x86_64 ;; \
+        arm64) MUSL_ARCH=aarch64 ;; \
+        *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && mkdir -p /opt/mysql56-client/bin /opt/mysql56-client/share/mariadb /opt/mysql56-client/lib \
+    && cp /usr/bin/mariadb-dump /opt/mysql56-client/bin/mariadb-dump-10.6 \
+    && cp -a /usr/share/mariadb/. /opt/mysql56-client/share/mariadb/ \
+    && cp "/lib/ld-musl-${MUSL_ARCH}.so.1" /opt/mysql56-client/lib/ \
+    && cp /lib/libssl.so.3 /lib/libcrypto.so.3 /lib/libz.so.1 /opt/mysql56-client/lib/ \
+    && printf '%s\n' '#!/bin/sh' 'exec /opt/mysql56-client/lib/ld-musl-*.so.1 --library-path /opt/mysql56-client/lib /opt/mysql56-client/bin/mariadb-dump-10.6 --character-sets-dir=/opt/mysql56-client/share/mariadb/charsets "$@"' > /opt/mysql56-client/bin/mariadb-dump-10.6-wrapper \
+    && chmod +x /opt/mysql56-client/bin/mariadb-dump-10.6-wrapper
+
 FROM dunglas/frankenphp:1.12-php8.5-alpine
 
 RUN install-php-extensions \
@@ -85,6 +106,9 @@ RUN case "${TARGETARCH}" in \
 # edge/community because Alpine stable repos lag behind the .NET LTS Microsoft
 # supports for musl.
 RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community dotnet8-runtime
+
+COPY --from=mysql56-client /opt/mysql56-client /opt/mysql56-client
+RUN ln -s /opt/mysql56-client/bin/mariadb-dump-10.6-wrapper /usr/local/bin/mariadb-dump-10.6
 
 # sqlpackage (Microsoft SQL Server export tool) — the framework-dependent dotnet
 # tool built in the sqlpackage stage above. Runs on the .NET 8 runtime installed

@@ -9,6 +9,12 @@ that shipped it. Releases before 1.0.0 are only listed on
 [GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
 are inherited from Databasement and keep their original upstream pull request links.
 
+## [1.7.14-dc.6] - 2026-09-18
+
+### Fixed
+
+- MySQL 5.6 backups now use a bundled MariaDB 10.6 dump client, avoiding the `generation_expression` error from MariaDB 11.x while newer MySQL and MariaDB servers keep using the current client.
+
 ## [1.7.14-dc.5] - 2026-09-18
 
 ### Changed

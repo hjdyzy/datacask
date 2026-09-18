@@ -85,6 +85,28 @@ function mysqlDatabaseReportingVersion(?string $version): MysqlDatabase
     return $db;
 }
 
+test('dump uses the MySQL 5.6-compatible client for legacy MySQL servers', function () {
+    $result = mysqlDatabaseReportingVersion('5.6.51-log')->dump('/tmp/dump.sql');
+
+    expect($result->command)->toStartWith('mariadb-dump-10.6 --single-transaction --routines')
+        ->and($result->command)->not->toStartWith('mariadb-dump --');
+});
+
+test('dump keeps the current client for MySQL and MariaDB servers with generated-column metadata', function (string $version) {
+    $result = mysqlDatabaseReportingVersion($version)->dump('/tmp/dump.sql');
+
+    expect($result->command)->toStartWith('mariadb-dump --single-transaction --routines');
+})->with([
+    'MySQL 5.7' => ['5.7.44-log'],
+    'MySQL 8' => ['8.4.11'],
+    'MariaDB 10.6' => ['10.6.16-MariaDB'],
+]);
+
+test('dump keeps the current client when the server version cannot be read', function () {
+    $result = mysqlDatabaseReportingVersion(null)->dump('/tmp/dump.sql');
+
+    expect($result->command)->toStartWith('mariadb-dump --single-transaction --routines');
+});
 test('dump keeps --routines for servers the MariaDB client can dump routines from', function (?string $version) {
     $result = mysqlDatabaseReportingVersion($version)->dump('/tmp/dump.sql');
 

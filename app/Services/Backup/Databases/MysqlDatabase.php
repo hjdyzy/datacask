@@ -21,7 +21,12 @@ class MysqlDatabase implements DatabaseInterface
 
     private const string DUMP_BINARY = 'mariadb-dump';
 
+    private const string LEGACY_DUMP_BINARY = 'mariadb-dump-10.6';
+
     private const string CLIENT_BINARY = 'mariadb';
+
+    /** First MySQL release that supports information_schema.columns.generation_expression. */
+    private const string MYSQL_GENERATED_COLUMNS_VERSION = '5.7.0';
 
     private const array DUMP_OPTIONS = [
         '--single-transaction', // Consistent snapshot for InnoDB without locking
@@ -69,6 +74,7 @@ class MysqlDatabase implements DatabaseInterface
     {
         $options = self::DUMP_OPTIONS;
         $options[] = $this->getSslFlag();
+        $binary = $this->dumpBinary();
 
         $log = null;
         if (! $this->canDumpRoutines()) {
@@ -87,7 +93,7 @@ class MysqlDatabase implements DatabaseInterface
         // Flags must come before the database name; mariadb-dump treats anything after it as table names
         $command = sprintf(
             '%s %s --host=%s --port=%s --user=%s --password=%s%s %s',
-            self::DUMP_BINARY,
+            $binary,
             implode(' ', $options),
             escapeshellarg($this->config['host']),
             escapeshellarg((string) $this->config['port']),
@@ -100,6 +106,24 @@ class MysqlDatabase implements DatabaseInterface
         $command .= ' > '.escapeshellarg($outputPath);
 
         return new DatabaseOperationResult(command: $command, log: $log);
+    }
+
+    /**
+     * MySQL 5.6 does not expose information_schema.columns.generation_expression,
+     * which MariaDB clients 11.x query while dumping generated-column metadata.
+     * Use the bundled 10.6 client for legacy MySQL servers only.
+     */
+    private function dumpBinary(): string
+    {
+        $version = $this->serverVersion();
+
+        if ($version === null || str_contains(strtolower($version), 'mariadb')) {
+            return self::DUMP_BINARY;
+        }
+
+        return version_compare($version, self::MYSQL_GENERATED_COLUMNS_VERSION, '<')
+            ? self::LEGACY_DUMP_BINARY
+            : self::DUMP_BINARY;
     }
 
     /**
