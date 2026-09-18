@@ -2074,6 +2074,12 @@ that shipped it. Releases before 1.0.0 are only listed on
 [GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
 are inherited from Databasement and keep their original upstream pull request links.
 
+## [1.7.14-dc.5] - 2026-09-18
+
+### Changed
+
+- System databases are now automatically excluded in exclusion mode, aligning it with the other database selection modes. Existing exclusion lists no longer retain system database names.
+
 ## [1.7.14-dc.4] - 2026-09-18
 
 ### Added
