@@ -57,6 +57,43 @@ redis-cli -h '...' -p '...' -a '...' --no-auth-warning --rdb dump.rdb
 
 All dumps are then compressed with gzip before being transferred to the storage volume.
 
+## Choosing Which Databases to Back Up
+
+A backup configuration decides one target volume and one schedule, and picks
+the databases it covers in one of four ways:
+
+| Mode | What it backs up |
+| --- | --- |
+| **All databases** | Every user database found on the server. System databases such as `information_schema` and `mysql` are excluded automatically. |
+| **Selected** | Only the databases you pick. New databases on the server are not picked up automatically. |
+| **Pattern** | Every database whose name matches a case-insensitive regular expression, such as `^prod_`. |
+| **All except** | Every database **except** an exact list of names. This is the inverse of **Selected**, and system databases are included unless you exclude them explicitly. |
+
+### All except
+
+Use this when most databases should be protected and only a few should not.
+New databases are picked up automatically, and the exclusion list stays short
+and stable.
+
+Two details matter:
+
+- **Names match exactly and are case-sensitive.** Excluding `legacy_db` does not
+  exclude `Legacy_DB` or `legacy_db_archive`. Typing a name that does not exist
+  on the server excludes nothing, so the backup simply covers one more database
+  than you may expect.
+- **System databases are your choice.** Unlike **All databases**, this mode
+  shows the system databases reported by the server and backs them up unless
+  you add their names to the exclusion list. This keeps the result predictable
+  when a server has databases the normal list would hide.
+
+The form shows a live preview of what will and will not be backed up. When you
+switch between **Selected** and **All except**, the list is cleared because the
+two modes give the same field opposite meanings.
+
+If the exclusion list covers every database the server reports, the run fails
+with `No databases left to back up after applying the exclusion list.` instead
+of reporting a successful backup that contains nothing.
+
 ## Failed Backups
 
 If a backup fails, check:
