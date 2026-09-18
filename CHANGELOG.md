@@ -9,6 +9,12 @@ that shipped it. Releases before 1.0.0 are only listed on
 [GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
 are inherited from Databasement and keep their original upstream pull request links.
 
+## [1.7.14-dc.7] - 2026-09-19
+
+### Fixed
+
+- Docker releases now build and reference their version-tagged runtime image, ensuring the MySQL 5.6-compatible dump client is included in published application images even when the `latest` runtime image already exists.
+
 ## [1.7.14-dc.6] - 2026-09-18
 
 ### Fixed

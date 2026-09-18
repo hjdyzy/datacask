@@ -70,12 +70,26 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
+      - name: Resolve base image tag
+        id: base_image_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME#v}"
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            tag="latest"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
       - name: Check for existing base image
         id: base_image_check
         shell: bash
         run: |
           set -euo pipefail
-          image="${ALIYUN_REGISTRY}/${ALIYUN_NAMESPACE}/datacask-php:latest"
+          image="${ALIYUN_REGISTRY}/${ALIYUN_NAMESPACE}/datacask-php:${{ steps.base_image_tag.outputs.tag }}"
           if docker buildx imagetools inspect "${image}" >/dev/null 2>&1; then
             echo "exists=true" >> "${GITHUB_OUTPUT}"
           else
@@ -110,17 +124,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Determine base image tag for application build
-        id: base_image_tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ steps.filter.outputs.base }}" == "true" || "${{ steps.base_image_check.outputs.exists }}" != "true" ]]; then
-            echo "tag=${{ steps.meta.outputs.version }}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "tag=latest" >> "${GITHUB_OUTPUT}"
-          fi
-
       - name: Publish base image summary
         shell: bash
         run: |
@@ -131,7 +134,7 @@ jobs:
             echo "${{ steps.meta.outputs.tags }}" >> "${GITHUB_STEP_SUMMARY}"
             echo '```' >> "${GITHUB_STEP_SUMMARY}"
           else
-            echo "No runtime changes; using datacask-php:latest." >> "${GITHUB_STEP_SUMMARY}"
+            echo "No runtime changes; using datacask-php:${{ steps.base_image_tag.outputs.tag }}." >> "${GITHUB_STEP_SUMMARY}"
           fi
 
   build-app-image:
