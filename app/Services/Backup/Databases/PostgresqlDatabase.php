@@ -388,7 +388,7 @@ class PostgresqlDatabase implements DatabaseInterface
         }
     }
 
-    public function listDatabases(): array
+    public function listDatabases(bool $includeSystemDatabases = false): array
     {
         $pdo = $this->createPdo();
 
@@ -399,7 +399,14 @@ class PostgresqlDatabase implements DatabaseInterface
 
         $databases = $statement->fetchAll(\PDO::FETCH_COLUMN, 0);
 
-        return array_values(array_filter($databases, fn ($db) => ! in_array($db, self::EXCLUDED_DATABASES)));
+        if ($includeSystemDatabases) {
+            return array_values($databases);
+        }
+
+        return array_values(array_filter(
+            $databases,
+            fn ($db) => ! in_array($db, self::EXCLUDED_DATABASES, true),
+        ));
     }
 
     public function testConnection(): array

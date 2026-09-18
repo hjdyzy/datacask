@@ -118,7 +118,7 @@ class MssqlDatabase implements DatabaseInterface
             .'END';
     }
 
-    public function listDatabases(): array
+    public function listDatabases(bool $includeSystemDatabases = false): array
     {
         $pdo = $this->createPdo();
 
@@ -128,6 +128,10 @@ class MssqlDatabase implements DatabaseInterface
         }
 
         $databases = $statement->fetchAll(\PDO::FETCH_COLUMN, 0);
+
+        if ($includeSystemDatabases) {
+            return array_values($databases);
+        }
 
         return array_values(array_filter(
             $databases,

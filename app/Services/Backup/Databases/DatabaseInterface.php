@@ -32,7 +32,7 @@ interface DatabaseInterface
      *
      * @return array<string>
      */
-    public function listDatabases(): array;
+    public function listDatabases(bool $includeSystemDatabases = false): array;
 
     /**
      * Test the database connection.

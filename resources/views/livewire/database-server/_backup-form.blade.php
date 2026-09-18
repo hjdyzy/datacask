@@ -138,7 +138,7 @@
                     </span>
                 </div>
 
-                <x-radio-card-group class="grid-cols-1 sm:grid-cols-3" :label="__('Database selection mode')">
+                <x-radio-card-group class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" :label="__('Database selection mode')">
                     <x-radio-card
                         :active="($backup['database_selection_mode'] ?? '') === DatabaseSelectionMode::All->value"
                         icon="o-circle-stack"
@@ -163,6 +163,14 @@
                         :value="DatabaseSelectionMode::Pattern->value"
                         wire:model.live="form.backups.{{ $index }}.database_selection_mode"
                     />
+                    <x-radio-card
+                        :active="($backup['database_selection_mode'] ?? '') === DatabaseSelectionMode::Excluded->value"
+                        icon="o-minus-circle"
+                        :label="__('All except')"
+                        :hint="__('Back up everything but the listed databases')"
+                        :value="DatabaseSelectionMode::Excluded->value"
+                        wire:model.live="form.backups.{{ $index }}.database_selection_mode"
+                    />
                 </x-radio-card-group>
 
                 {{-- All Databases sub-panel --}}
@@ -175,10 +183,10 @@
                             <p class="text-sm text-base-content/80 leading-relaxed">
                                 {{ __('All user databases will be backed up. System databases are automatically excluded.') }}
                             </p>
-                            @if(count($form->availableDatabases) > 0)
+                            @if(count($form->getVisibleDatabaseOptions()) > 0)
                                 <div class="flex items-center gap-2">
                                     <span class="text-xs text-base-content/60">{{ __('Detected databases:') }}</span>
-                                    <span class="badge badge-ghost badge-sm font-mono tabular-nums">{{ count($form->availableDatabases) }}</span>
+                                    <span class="badge badge-ghost badge-sm font-mono tabular-nums">{{ count($form->getVisibleDatabaseOptions()) }}</span>
                                 </div>
                             @endif
                         </div>
@@ -197,7 +205,7 @@
                             <x-choices-offline
                                 wire:model.live="form.backups.{{ $index }}.database_names"
                                 :label="__('Select Databases')"
-                                :options="$form->availableDatabases"
+                                :options="$form->getVisibleDatabaseOptions($backup['database_selection_mode'] ?? null)"
                                 :hint="__('Select one or more databases to backup')"
                                 searchable
                             />
@@ -210,6 +218,71 @@
                                 type="text"
                                 required
                             />
+                        @endif
+                    </div>
+                @endif
+
+                {{-- Excluded Databases sub-panel --}}
+                @if(($backup['database_selection_mode'] ?? '') === DatabaseSelectionMode::Excluded->value)
+                    <div class="rounded-lg border border-base-300 bg-base-100 p-4 space-y-4">
+                        @if($form->loadingDatabases)
+                            <div class="flex items-center gap-2 text-base-content/70">
+                                <x-loading class="loading-spinner loading-sm" />
+                                {{ __('Loading databases...') }}
+                            </div>
+                        @elseif(count($form->availableDatabases) > 0)
+                            <x-choices-offline
+                                wire:model.live="form.backups.{{ $index }}.database_names"
+                                :label="__('Exclude Databases')"
+                                :options="$form->getVisibleDatabaseOptions($backup['database_selection_mode'] ?? null)"
+                                :hint="__('Every other database will be backed up')"
+                                searchable
+                            />
+                            <p class="text-xs text-base-content/60">
+                                {{ __('System databases are included unless you exclude them explicitly.') }}
+                            </p>
+
+                            @php
+                                $excludedNames = array_filter((array) ($backup['database_names'] ?? []));
+                                $remainingCount = max(count($form->availableDatabases) - count($excludedNames), 0);
+                            @endphp
+
+                            <div class="rounded-lg border border-base-300 bg-base-200/40 overflow-hidden">
+                                <div class="flex items-center justify-between bg-base-200/60 px-3 py-2 border-b border-base-300">
+                                    <span class="text-xs font-semibold text-base-content/70">{{ __('Preview') }}</span>
+                                    <span class="text-xs text-base-content/60 tabular-nums">
+                                        <span class="font-semibold text-success">{{ $remainingCount }}</span><span class="text-base-content/50">/{{ count($form->availableDatabases) }} {{ __('will be backed up') }}</span>
+                                    </span>
+                                </div>
+                                <div class="max-h-48 overflow-y-auto divide-y divide-base-200">
+                                    @foreach($form->availableDatabases as $db)
+                                        @php $isExcluded = in_array($db['name'], $excludedNames, true); @endphp
+                                        <div class="flex items-center gap-2.5 px-3 py-2 text-sm {{ $isExcluded ? 'opacity-35' : '' }}">
+                                            @if($isExcluded)
+                                                <x-icon name="o-minus-circle" class="w-4 h-4 text-base-content/40 shrink-0" />
+                                            @else
+                                                <x-icon name="s-check-circle" class="w-4 h-4 text-success shrink-0" />
+                                            @endif
+                                            <span class="font-mono text-xs {{ $isExcluded ? 'text-base-content/70 line-through' : 'font-medium' }}">{{ $db['name'] }}</span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @else
+                            <x-input
+                                wire:model.live.debounce.400ms="form.backups.{{ $index }}.database_names_input"
+                                :label="__('Excluded Database Names')"
+                                placeholder="{{ __('e.g., db1, db2, db3') }}"
+                                :hint="__('Enter the exact database names to exclude, separated by commas. Every other database will be backed up.')"
+                                type="text"
+                                required
+                            />
+
+                            @if($form->hasAgent())
+                                <x-alert class="alert-info" icon="o-information-circle">
+                                    {{ __('Names are matched exactly on the agent after it discovers the databases.') }}
+                                </x-alert>
+                            @endif
                         @endif
                     </div>
                 @endif

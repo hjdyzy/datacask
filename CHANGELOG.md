@@ -9,7 +9,11 @@ that shipped it. Releases before 1.0.0 are only listed on
 [GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
 are inherited from Databasement and keep their original upstream pull request links.
 
-## [Unreleased]
+## [1.7.14-dc.4] - 2026-09-18
+
+### Added
+
+- Back up every database except an explicit list, with exact case-sensitive matching; system databases stay user-selectable in this mode.
 
 ## [1.7.14-dc.3] - 2026-09-16
 

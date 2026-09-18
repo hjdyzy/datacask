@@ -183,8 +183,15 @@ class SaveDatabaseServerRequest extends FormRequest
 
         $mode = $backup['database_selection_mode'] ?? null;
 
-        if ($mode === DatabaseSelectionMode::Selected->value && empty($backup['database_names'])) {
-            $validator->errors()->add("backups.{$index}.database_names", 'At least one database must be selected.');
+        if (in_array($mode, [DatabaseSelectionMode::Selected->value, DatabaseSelectionMode::Excluded->value], true)
+            && empty($backup['database_names'])
+        ) {
+            $validator->errors()->add(
+                "backups.{$index}.database_names",
+                $mode === DatabaseSelectionMode::Excluded->value
+                    ? 'At least one database must be excluded.'
+                    : 'At least one database must be selected.',
+            );
         }
 
         if ($mode === DatabaseSelectionMode::Pattern->value) {

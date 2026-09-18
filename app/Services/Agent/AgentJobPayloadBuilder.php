@@ -3,6 +3,7 @@
 namespace App\Services\Agent;
 
 use App\Enums\CompressionType;
+use App\Enums\DatabaseSelectionMode;
 use App\Facades\AppConfig;
 use App\Models\Backup;
 use App\Models\Snapshot;
@@ -59,6 +60,7 @@ class AgentJobPayloadBuilder
      *     database: array{type: string, host: string, port: int, username: string, password: string, extra_config: array<string, mixed>|null},
      *     selection_mode: string,
      *     pattern: string|null,
+     *     excluded_databases: array<string>,
      *     server_name: string|null,
      *     method: 'manual'|'scheduled',
      *     triggered_by_user_id: int|null,
@@ -74,6 +76,11 @@ class AgentJobPayloadBuilder
             'database' => DatabaseConnectionConfig::fromServer($server)->toPayload(),
             'selection_mode' => $backup->database_selection_mode->value,
             'pattern' => $backup->database_include_pattern,
+            // The agent has to know which names to subtract when the mode is
+            // `excluded`; the other modes ignore this list.
+            'excluded_databases' => $backup->database_selection_mode === DatabaseSelectionMode::Excluded
+                ? array_values($backup->database_names ?? [])
+                : [],
             'server_name' => $server->name,
             'method' => $method,
             'triggered_by_user_id' => $triggeredByUserId,

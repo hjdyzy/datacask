@@ -32,6 +32,7 @@ class BackupJobFactory
      * For selected mode: Returns array with one Snapshot per selected database
      * For all mode: Returns array with Snapshot per database on server
      * For pattern mode: Returns array with Snapshot per matching database
+     * For excluded mode: Returns array with Snapshot per remaining database
      * For SQLite: Returns array with one Snapshot per configured path on the server
      *
      * @param  'manual'|'scheduled'  $method
@@ -61,7 +62,7 @@ class BackupJobFactory
 
         // Agent-backed servers defer discovery to the agent — the web app
         // can't reach the database itself.
-        if ($server->agent_id && in_array($backup->database_selection_mode, [DatabaseSelectionMode::All, DatabaseSelectionMode::Pattern], true)) {
+        if ($server->agent_id && $backup->database_selection_mode->requiresServerDiscovery()) {
             return [];
         }
 
@@ -72,7 +73,8 @@ class BackupJobFactory
                     $this->databaseProvider->listDatabasesForServer($server),
                     $backup->database_include_pattern ?? '',
                 ),
-                default => $backup->database_names ?? [],
+                DatabaseSelectionMode::Excluded => $this->resolveExcludedDatabases($server, $backup),
+                DatabaseSelectionMode::Selected => $backup->database_names ?? [],
             };
         } catch (\Throwable $e) {
             $this->recordPreflightFailure($backup, $method, $triggeredByUserId, $e);
@@ -89,6 +91,34 @@ class BackupJobFactory
         }
 
         return $snapshots;
+    }
+
+    /**
+     * Resolve the target list for an exclusion-mode backup.
+     *
+     * Enumerating the server and subtracting the exclusion list is the only
+     * mode whose result is not knowable up front, so an empty result here is
+     * raised as a failure rather than returned as "nothing to do" — the user
+     * asked for every remaining database and there are none.
+     *
+     * @return array<string>
+     *
+     * @throws \RuntimeException when every discovered database is excluded
+     */
+    private function resolveExcludedDatabases(DatabaseServer $server, Backup $backup): array
+    {
+        $remaining = DatabaseServer::filterDatabasesByExclusion(
+            $this->databaseProvider->listDatabasesForServer($server, includeSystemDatabases: true),
+            $backup->database_names ?? [],
+        );
+
+        if ($remaining === []) {
+            throw new \RuntimeException(
+                'No databases left to back up after applying the exclusion list.'
+            );
+        }
+
+        return $remaining;
     }
 
     /**
@@ -163,7 +193,8 @@ class BackupJobFactory
         $databaseName = match ($backup->database_selection_mode) {
             DatabaseSelectionMode::All => '(all databases)',
             DatabaseSelectionMode::Pattern => $backup->database_include_pattern ?: '(pattern)',
-            default => '(preflight)',
+            DatabaseSelectionMode::Excluded => '(excluded databases)',
+            DatabaseSelectionMode::Selected => '(preflight)',
         };
 
         $snapshot = $this->createSnapshot($backup, $databaseName, $method, $triggeredByUserId);

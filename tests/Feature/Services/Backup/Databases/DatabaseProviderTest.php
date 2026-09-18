@@ -94,6 +94,36 @@ test('listDatabasesForServer delegates to handler listDatabases', function () {
     expect($databases)->toBe(['app_db', 'test_db']);
 });
 
+test('listDatabasesForServer can request system databases for exclusion mode', function () {
+    $server = DatabaseServer::factory()->create([
+        'database_type' => 'mysql',
+        'host' => 'db.local',
+        'port' => 3306,
+        'username' => 'root',
+        'password' => 'secret',
+    ]);
+
+    $mockHandler = Mockery::mock(DatabaseInterface::class);
+    $mockHandler->shouldReceive('listDatabases')
+        ->once()
+        ->with(true)
+        ->andReturn(['mysql', 'app_db']);
+
+    $sshTunnelService = Mockery::mock(SshTunnelService::class);
+    $sshTunnelService->shouldReceive('close')->once();
+
+    $factory = Mockery::mock(DatabaseProvider::class, [new \App\Services\Backup\Filesystems\SftpFilesystem, $sshTunnelService])
+        ->makePartial();
+    $factory->shouldReceive('makeForServer')
+        ->once()
+        ->with($server, '', 'db.local', 3306)
+        ->andReturn($mockHandler);
+
+    $databases = $factory->listDatabasesForServer($server, includeSystemDatabases: true);
+
+    expect($databases)->toBe(['mysql', 'app_db']);
+});
+
 test('makeForServer passes auth_source from extra_config for mongodb', function () {
     $server = DatabaseServer::factory()->mongodb()->create();
 

@@ -171,10 +171,29 @@ class AgentRunCommand extends Command
                 'extra_config' => $payload['database']['extra_config'] ?? null,
             ]);
 
-            $databases = app(DatabaseProvider::class)->listDatabasesForServer($tempServer);
+            $selectionMode = $payload['selection_mode'] ?? '';
+
+            $databases = app(DatabaseProvider::class)->listDatabasesForServer(
+                $tempServer,
+                includeSystemDatabases: $selectionMode === 'excluded',
+            );
 
             if (($payload['selection_mode'] ?? '') === 'pattern' && ! empty($payload['pattern'])) {
                 $databases = DatabaseServer::filterDatabasesByPattern($databases, $payload['pattern']);
+            }
+
+            if ($selectionMode === 'excluded') {
+                $databases = DatabaseServer::filterDatabasesByExclusion(
+                    $databases,
+                    (array) ($payload['excluded_databases'] ?? []),
+                );
+
+                // Every discovered database was excluded: fail the job instead
+                // of reporting zero databases, which the web app reads as
+                // success. Other modes keep their existing behaviour.
+                if ($databases === []) {
+                    throw new \RuntimeException('No databases left to back up after applying the exclusion list.');
+                }
             }
 
             $client->reportDiscoveredDatabases($job['id'], $databases);

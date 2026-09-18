@@ -23,7 +23,7 @@ class RedisDatabase implements DatabaseInterface
         $this->config = $config;
     }
 
-    public function listDatabases(): array
+    public function listDatabases(bool $includeSystemDatabases = false): array
     {
         return ['all'];
     }

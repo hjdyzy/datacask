@@ -101,6 +101,9 @@ class Backup extends Model
             DatabaseSelectionMode::All => __('All databases'),
             DatabaseSelectionMode::Selected => Formatters::truncatedList($this->database_names ?? [], 2),
             DatabaseSelectionMode::Pattern => '/'.$this->database_include_pattern.'/',
+            DatabaseSelectionMode::Excluded => __('All databases except :names', [
+                'names' => Formatters::truncatedList($this->database_names ?? [], 2),
+            ]),
         };
     }
 

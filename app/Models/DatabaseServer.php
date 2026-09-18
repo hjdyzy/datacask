@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DatabaseSelectionMode;
 use App\Enums\DatabaseType;
 use App\Enums\NotificationChannelSelection;
 use App\Enums\NotificationTrigger;
@@ -251,6 +252,13 @@ class DatabaseServer extends Model
         $names = [];
 
         foreach ($backups as $backup) {
+            // Excluded mode reuses `database_names` for the opposite meaning:
+            // those databases are the ones deliberately left out, so they must
+            // never surface as targets for restore autocomplete or Adminer.
+            if ($backup->database_selection_mode === DatabaseSelectionMode::Excluded) {
+                continue;
+            }
+
             foreach ($backup->database_names ?? [] as $name) {
                 if ($name !== '') {
                     $names[] = $name;
@@ -320,6 +328,29 @@ class DatabaseServer extends Model
         $regex = '/'.$pattern.'/i';
 
         return array_values(array_filter($databases, fn (string $db) => preg_match($regex, $db) === 1));
+    }
+
+    /**
+     * Remove the exact, case-sensitive names listed in the exclusion list.
+     *
+     * Unlike the pattern filter this is deliberately not a fuzzy match, and it
+     * works on names the caller has already validated against the source regex
+     * or an explicit picker, so no additional escaping is required.
+     *
+     * @param  array<string>  $databases
+     * @param  array<string>  $excluded
+     * @return array<string>
+     */
+    public static function filterDatabasesByExclusion(array $databases, array $excluded): array
+    {
+        if ($excluded === []) {
+            return array_values($databases);
+        }
+
+        return array_values(array_filter(
+            $databases,
+            fn (string $db) => ! in_array($db, $excluded, true),
+        ));
     }
 
     /**

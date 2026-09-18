@@ -50,7 +50,7 @@ class FirebirdDatabase implements DatabaseInterface
         // Firebird restore uses gbak -rep to replace an existing target database in one step.
     }
 
-    public function listDatabases(): array
+    public function listDatabases(bool $includeSystemDatabases = false): array
     {
         $configuredNames = $this->config['database_names'] ?? null;
         if (is_array($configuredNames)) {

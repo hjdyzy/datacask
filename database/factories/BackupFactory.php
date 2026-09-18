@@ -89,6 +89,20 @@ class BackupFactory extends Factory
     }
 
     /**
+     * State: back up every database except these exact names.
+     *
+     * @param  array<int, string>  $databases
+     */
+    public function excluded(array $databases = ['legacy']): static
+    {
+        return $this->state(fn () => [
+            'database_selection_mode' => DatabaseSelectionMode::Excluded->value,
+            'database_names' => $databases,
+            'database_include_pattern' => null,
+        ]);
+    }
+
+    /**
      * State: GFS retention policy with default tiers.
      */
     public function gfs(int $daily = 7, int $weekly = 4, int $monthly = 12): static

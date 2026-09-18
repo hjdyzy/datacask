@@ -59,7 +59,7 @@ class RetryFailedSnapshotAction
         if (! $backup->databaseServer->backups_enabled || $source->job->status !== BackupJobStatus::Failed
             || $source->database_name === ''
             || ($source->metadata['preflight_failure'] ?? false)
-            || in_array($source->database_name, ['(all databases)', '(preflight)'], true)) {
+            || in_array($source->database_name, ['(all databases)', '(excluded databases)', '(preflight)'], true)) {
             throw ValidationException::withMessages(['snapshot' => __('This failed backup cannot be retried.')]);
         }
 
@@ -68,6 +68,10 @@ class RetryFailedSnapshotAction
         $pattern = (string) ($backup->database_include_pattern ?? '');
         if ($mode === DatabaseSelectionMode::Selected && ! in_array($name, $backup->database_names ?? [], true)) {
             throw ValidationException::withMessages(['snapshot' => __('This database is no longer selected for backup.')]);
+        }
+
+        if ($mode === DatabaseSelectionMode::Excluded && in_array($name, $backup->database_names ?? [], true)) {
+            throw ValidationException::withMessages(['snapshot' => __('This database is excluded from backup.')]);
         }
 
         if ($mode === DatabaseSelectionMode::Pattern && ($name === $pattern

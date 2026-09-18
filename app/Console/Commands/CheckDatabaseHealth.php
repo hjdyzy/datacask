@@ -71,6 +71,7 @@ class CheckDatabaseHealth extends Command
                 'health_success_count' => $successes,
                 'health_checked_at' => now(),
             ]);
+
             return $transition;
         });
     }

@@ -71,7 +71,7 @@ class MongodbDatabase implements DatabaseInterface
         // MongoDB restore uses --drop flag to handle existing collections; no separate preparation needed
     }
 
-    public function listDatabases(): array
+    public function listDatabases(bool $includeSystemDatabases = false): array
     {
         $manager = $this->createManager();
         $cursor = $manager->executeCommand('admin', new Command(['listDatabases' => 1]));
@@ -85,7 +85,14 @@ class MongodbDatabase implements DatabaseInterface
             $dbList,
         );
 
-        return array_values(array_filter($databases, fn (string $db): bool => ! in_array($db, self::EXCLUDED_DATABASES)));
+        if ($includeSystemDatabases) {
+            return array_values($databases);
+        }
+
+        return array_values(array_filter(
+            $databases,
+            fn (string $db): bool => ! in_array($db, self::EXCLUDED_DATABASES, true),
+        ));
     }
 
     public function testConnection(): array

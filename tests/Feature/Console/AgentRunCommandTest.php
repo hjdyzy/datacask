@@ -265,6 +265,7 @@ test('discovery job with pattern filters databases', function () {
             ],
             'selection_mode' => 'pattern',
             'pattern' => '^prod_',
+            'excluded_databases' => [],
             'server_name' => 'prod-mysql',
             'method' => 'manual',
             'triggered_by_user_id' => null,
@@ -289,5 +290,95 @@ test('discovery job with pattern filters databases', function () {
 
     Http::assertSent(fn ($request) => str_contains($request->url(), '/discovered-databases')
         && $request['databases'] === ['prod_users', 'prod_orders']
+    );
+});
+
+test('discovery job with excluded mode subtracts the exclusion list', function () {
+    $discoveryPayload = [
+        'id' => 'job-excl',
+        'snapshot_id' => null,
+        'payload' => [
+            'type' => 'discover',
+            'database' => [
+                'type' => 'mysql',
+                'host' => '127.0.0.1',
+                'port' => 3306,
+                'username' => 'root',
+                'password' => 'secret',
+                'extra_config' => null,
+            ],
+            'selection_mode' => 'excluded',
+            'pattern' => null,
+            'excluded_databases' => ['legacy_db'],
+            'server_name' => 'prod-mysql',
+            'method' => 'manual',
+            'triggered_by_user_id' => null,
+        ],
+        'attempts' => 1,
+        'max_attempts' => 3,
+    ];
+
+    Http::fake([
+        '*/agent/heartbeat' => Http::response(['status' => 'ok']),
+        '*/agent/jobs/claim' => Http::response(['job' => $discoveryPayload]),
+        '*/agent/jobs/job-excl/discovered-databases' => Http::response(['status' => 'ok', 'jobs_created' => 2]),
+    ]);
+
+    $this->mock(\App\Services\Backup\Databases\DatabaseProvider::class, function ($mock) {
+        $mock->shouldReceive('listDatabasesForServer')->once()
+            ->withArgs(fn (\App\Models\DatabaseServer $server, bool $includeSystemDatabases = false) => $includeSystemDatabases)
+            ->andReturn(['app_db', 'legacy_db', 'analytics_db']);
+    });
+
+    $this->artisan('agent:run --once')->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/discovered-databases')
+        && $request['databases'] === ['app_db', 'analytics_db']
+    );
+});
+
+test('discovery job with excluded mode fails when every database is excluded', function () {
+    $discoveryPayload = [
+        'id' => 'job-excl-all',
+        'snapshot_id' => null,
+        'payload' => [
+            'type' => 'discover',
+            'database' => [
+                'type' => 'mysql',
+                'host' => '127.0.0.1',
+                'port' => 3306,
+                'username' => 'root',
+                'password' => 'secret',
+                'extra_config' => null,
+            ],
+            'selection_mode' => 'excluded',
+            'pattern' => null,
+            'excluded_databases' => ['only_db'],
+            'server_name' => 'prod-mysql',
+            'method' => 'manual',
+            'triggered_by_user_id' => null,
+        ],
+        'attempts' => 1,
+        'max_attempts' => 3,
+    ];
+
+    Http::fake([
+        '*/agent/heartbeat' => Http::response(['status' => 'ok']),
+        '*/agent/jobs/claim' => Http::response(['job' => $discoveryPayload]),
+        '*/agent/jobs/job-excl-all/fail' => Http::response(['status' => 'ok']),
+    ]);
+
+    $this->mock(\App\Services\Backup\Databases\DatabaseProvider::class, function ($mock) {
+        $mock->shouldReceive('listDatabasesForServer')->once()
+            ->withArgs(fn (\App\Models\DatabaseServer $server, bool $includeSystemDatabases = false) => $includeSystemDatabases)
+            ->andReturn(['only_db']);
+    });
+
+    $this->artisan('agent:run --once')
+        ->expectsOutputToContain('No databases left to back up after applying the exclusion list.')
+        ->assertSuccessful();
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/fail')
+        && str_contains((string) $request['error_message'], 'exclusion list')
     );
 });

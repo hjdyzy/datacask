@@ -247,7 +247,7 @@
                                     $isSqliteServer = $server->database_type === DatabaseType::SQLITE;
                                     $databaseNames = is_array($backup->database_names) ? array_values(array_filter($backup->database_names)) : [];
                                     $showNamesList = ($isSqliteServer && $databaseNames !== [])
-                                        || ($mode === DatabaseSelectionMode::Selected && $databaseNames !== []);
+                                        || (in_array($mode, [DatabaseSelectionMode::Selected, DatabaseSelectionMode::Excluded], true) && $databaseNames !== []);
                                 @endphp
                                 <div class="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3.5">
                                     <dl class="grid gap-y-2 gap-x-4 text-sm" style="grid-template-columns: auto 1fr;">
@@ -258,9 +258,12 @@
                                             </dt>
                                             <dd class="font-semibold text-base-content">
                                                 @if($showNamesList)
+                                                    @if($mode === DatabaseSelectionMode::Excluded)
+                                                        <div class="text-xs text-base-content/60 mb-1.5">{{ __('All databases except:') }}</div>
+                                                    @endif
                                                     <div class="flex flex-wrap items-center gap-1.5">
                                                         @foreach($databaseNames as $name)
-                                                            <span class="badge badge-ghost badge-sm font-mono normal-case">
+                                                            <span class="badge badge-sm font-mono normal-case {{ $mode === DatabaseSelectionMode::Excluded ? 'badge-warning badge-outline' : 'badge-ghost' }}">
                                                                 <x-icon :name="$isSqliteServer ? 'o-document' : 'o-circle-stack'" class="w-3 h-3 opacity-60 mr-1" />
                                                                 {{ $name }}
                                                             </span>

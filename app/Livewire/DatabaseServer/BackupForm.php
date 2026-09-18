@@ -139,7 +139,9 @@ final class BackupForm
 
         $mode = $entry['database_selection_mode'] ?? null;
 
-        if ($mode !== DatabaseSelectionMode::Selected->value) {
+        // Selected and Excluded both carry their meaning in `database_names`;
+        // every other mode has no list to keep.
+        if (! in_array($mode, [DatabaseSelectionMode::Selected->value, DatabaseSelectionMode::Excluded->value], true)) {
             $entry['database_names'] = null;
         }
 
@@ -250,6 +252,12 @@ final class BackupForm
             $mode = $entry['database_selection_mode'] ?? null;
 
             if ($mode === DatabaseSelectionMode::Selected->value) {
+                $rules[$prefix.'database_names'] = 'required|array|min:1';
+            }
+
+            // Excluded mode needs at least one name: an empty exclusion list
+            // would be indistinguishable from "all", which this mode is not.
+            if ($mode === DatabaseSelectionMode::Excluded->value) {
                 $rules[$prefix.'database_names'] = 'required|array|min:1';
             }
 
@@ -412,6 +420,25 @@ final class BackupForm
             }
 
             return __('databases matching /:pattern/i', ['pattern' => $pattern]);
+        }
+
+        if ($mode === DatabaseSelectionMode::Excluded->value) {
+            /** @var array<int, string> $names */
+            $names = $entry['database_names'] ?? [];
+            $count = count(array_filter($names));
+
+            // Fallback: the user is typing comma-separated names, count them.
+            if ($count === 0 && ! empty($entry['database_names_input'])) {
+                $count = count(array_filter(
+                    array_map('trim', explode(',', (string) $entry['database_names_input']))
+                ));
+            }
+
+            if ($count === 0) {
+                return null;
+            }
+
+            return __('all databases except :count excluded', ['count' => $count]);
         }
 
         return null;

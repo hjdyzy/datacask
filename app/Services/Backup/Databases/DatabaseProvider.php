@@ -255,8 +255,10 @@ class DatabaseProvider
      *
      * @return array<string>
      */
-    public function listDatabasesForServer(DatabaseServer $server): array
-    {
+    public function listDatabasesForServer(
+        DatabaseServer $server,
+        bool $includeSystemDatabases = false,
+    ): array {
         // SQLite identifies databases by configured file path. Connecting just
         // to read back a basename loses the path; return the configured paths
         // directly so callers (restore autocomplete, agent discovery) see them.
@@ -269,7 +271,7 @@ class DatabaseProvider
 
             $database = $this->makeForServer($server, $this->getConnectionDatabaseName($server), $host, $port);
 
-            return $database->listDatabases();
+            return $database->listDatabases($includeSystemDatabases);
         } finally {
             $this->sshTunnelService->close();
         }
