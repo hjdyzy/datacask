@@ -2,9 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Enums\BackupJobStatus;
 use App\Enums\SnapshotFileStatus;
 use App\Exceptions\Backup\VolumeTransferException;
 use App\Facades\AppConfig;
+use App\Models\BackupJob;
 use App\Models\Snapshot;
 use App\Models\SnapshotFile;
 use App\Services\Backup\BackupTask;
@@ -67,13 +69,12 @@ class ProcessBackupJob implements ShouldQueue
         $databaseServer = $snapshot->databaseServer;
         $job = $snapshot->job;
 
-        // Update job with queue job ID for tracking (guard for dispatchSync)
-        if ($this->job) {
-            $job->update(['job_id' => $this->job->getJobId()]);
-        }
-
         try {
-            $job->markRunning();
+            $queueJobId = $this->job?->getJobId();
+            if (! $job->claimForExecution($queueJobId)) {
+                return;
+            }
+            $job->refresh();
 
             $attemptInfo = $this->job ? " (attempt {$this->attempts()}/{$this->tries})" : '';
             $job->log("Starting backup for database: {$snapshot->database_name}{$attemptInfo}", 'info');
@@ -104,9 +105,15 @@ class ProcessBackupJob implements ShouldQueue
 
             $result = $backupTask->execute($config, $job);
 
+            if ($job->fresh()?->status !== BackupJobStatus::Running) {
+                return;
+            }
+
             $this->persistResult($snapshot, $result);
 
-            $job->markCompleted();
+            if (! $job->markCompleted()) {
+                return;
+            }
 
             app(NotificationService::class)->notifyBackupSuccess($snapshot);
 
@@ -126,15 +133,15 @@ class ProcessBackupJob implements ShouldQueue
             // recorded so their files stay tracked, then the job is failed.
             $this->persistResult($snapshot, $e->result);
 
-            $job->log("Backup failed: {$e->getMessage()}", 'error', [
+            $this->recordFailure($job, $e, [
                 'exception' => get_class($e),
             ]);
-            $job->markFailed($e);
 
             if ($e->allFailuresAreQuota()) {
                 // Over-quota volumes won't free up on their own — fail
                 // immediately (no retry). The custom message reaches the user
                 // via the failure notification.
+                $job->markFailed($e);
                 $this->fail($e);
 
                 return;
@@ -142,12 +149,11 @@ class ProcessBackupJob implements ShouldQueue
 
             throw $e;
         } catch (\Throwable $e) {
-            $job->log("Backup failed: {$e->getMessage()}", 'error', [
+            $this->recordFailure($job, $e, [
                 'exception' => get_class($e),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            $job->markFailed($e);
 
             throw $e;
         }
@@ -188,6 +194,21 @@ class ProcessBackupJob implements ShouldQueue
     }
 
     /**
+     * Keep transient queue attempts retryable while recording the final failure.
+     * Direct calls without a queue worker are treated as final attempts.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function recordFailure(BackupJob $job, \Throwable $exception, array $context): void
+    {
+        $job->log("Backup failed: {$exception->getMessage()}", 'error', $context);
+
+        if ($this->job === null || $this->attempts() >= $this->tries) {
+            $job->markFailed($exception);
+        }
+    }
+
+    /**
      * Handle a job failure (called by Laravel queue after all retries exhausted).
      */
     public function failed(\Throwable $exception): void
@@ -195,6 +216,15 @@ class ProcessBackupJob implements ShouldQueue
         $snapshot = Snapshot::with(['databaseServer'])->find($this->snapshotId);
         if ($snapshot === null) {
             return;
+        }
+
+        $job = $snapshot->job;
+        if ($job && $job->status !== BackupJobStatus::Completed && $job->status !== BackupJobStatus::Failed) {
+            $job->log("Backup failed: {$exception->getMessage()}", 'error', [
+                'exception' => get_class($exception),
+                'source' => 'queue_failed_callback',
+            ]);
+            $job->markFailed($exception);
         }
 
         app(NotificationService::class)->notifyBackupFailed($snapshot, $exception);

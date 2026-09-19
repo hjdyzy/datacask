@@ -72,6 +72,26 @@ test('handle builds config from models and updates snapshot on success', functio
         ->and($snapshot->checksum)->toBe('abc123def456');
 });
 
+test('handle skips a queued message for a job already marked failed', function () {
+    $server = createDatabaseServer([
+        'name' => 'Production MySQL',
+        'host' => 'localhost',
+        'port' => 3306,
+        'database_type' => 'mysql',
+        'database_names' => ['myapp'],
+    ]);
+    $snapshot = app(BackupJobFactory::class)->createSnapshots($server->backups->first(), 'manual')[0];
+    $snapshot->job->markFailed(new \RuntimeException('stuck in pending state'));
+
+    $mockBackupTask = Mockery::mock(BackupTask::class);
+    $mockBackupTask->shouldNotReceive('execute');
+
+    (new ProcessBackupJob($snapshot->id))->handle($mockBackupTask);
+
+    expect($snapshot->fresh()->job->status)->toBe(BackupJobStatus::Failed)
+        ->and($snapshot->fresh()->job->error_message)->toBe('stuck in pending state');
+});
+
 test('handle passes backup path from model to config', function () {
     $server = createDatabaseServer([
         'name' => 'MySQL Server',

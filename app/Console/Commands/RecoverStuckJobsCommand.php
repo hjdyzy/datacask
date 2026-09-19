@@ -102,9 +102,13 @@ class RecoverStuckJobsCommand extends Command
         }
 
         foreach ($stuckJobs as $job) {
-            $job->markFailed(
-                new RuntimeException('Job timed out: stuck in '.$job->status->value.' state beyond the configured timeout.')
-            );
+            $state = $job->status->value;
+            $exception = new RuntimeException("Job timed out: stuck in {$state} state beyond the configured timeout.");
+            $job->log($exception->getMessage(), 'error', [
+                'source' => 'stuck_job_recovery',
+                'queue_execution_started' => $state !== BackupJobStatus::Pending->value,
+            ]);
+            $job->markFailed($exception);
         }
 
         $this->info("Backup jobs: failed {$stuckJobs->count()} stuck job(s).");

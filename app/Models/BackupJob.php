@@ -135,13 +135,29 @@ class BackupJob extends Model implements BackupLogger
     /**
      * Mark job as completed
      */
-    public function markCompleted(): void
+    public function markCompleted(): bool
     {
-        $this->update([
-            'status' => BackupJobStatus::Completed,
+        $updates = [
+            'status' => BackupJobStatus::Completed->value,
             'completed_at' => now(),
             'duration_ms' => $this->calculateDuration(),
-        ]);
+            'error_message' => null,
+            'error_trace' => null,
+            'updated_at' => now(),
+        ];
+
+        $updated = $this->newQuery()
+            ->whereKey($this->getKey())
+            ->where('status', BackupJobStatus::Running->value)
+            ->update($updates);
+
+        if ($updated === 0) {
+            return false;
+        }
+
+        $this->forceFill($updates);
+
+        return true;
     }
 
     /**
@@ -194,12 +210,60 @@ class BackupJob extends Model implements BackupLogger
     /**
      * Mark job as running
      */
-    public function markRunning(): void
+    public function markRunning(?string $queueJobId = null): bool
     {
-        $this->update([
-            'status' => BackupJobStatus::Running,
+        $updates = [
+            'status' => BackupJobStatus::Running->value,
             'started_at' => now(),
-        ]);
+            'completed_at' => null,
+            'duration_ms' => null,
+            'error_message' => null,
+            'error_trace' => null,
+            'updated_at' => now(),
+        ];
+
+        if ($queueJobId !== null) {
+            $updates['job_id'] = $queueJobId;
+        }
+
+        return $this->update($updates);
+    }
+
+    /**
+     * Atomically claim a queued backup execution while it is still active.
+     * Terminal jobs can remain in the queue after recovery has failed them.
+     */
+    public function claimForExecution(?string $queueJobId = null): bool
+    {
+        $updates = [
+            'status' => BackupJobStatus::Running->value,
+            'started_at' => now(),
+            'completed_at' => null,
+            'duration_ms' => null,
+            'error_message' => null,
+            'error_trace' => null,
+            'updated_at' => now(),
+        ];
+
+        if ($queueJobId !== null) {
+            $updates['job_id'] = $queueJobId;
+        }
+
+        $updated = $this->newQuery()
+            ->whereKey($this->getKey())
+            ->whereIn('status', [
+                BackupJobStatus::Pending->value,
+                BackupJobStatus::Running->value,
+            ])
+            ->update($updates);
+
+        if ($updated === 0) {
+            return false;
+        }
+
+        $this->forceFill($updates);
+
+        return true;
     }
 
     /**

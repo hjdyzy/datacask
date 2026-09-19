@@ -31,3 +31,56 @@ test('markFailed leaves already-finalized command logs untouched', function () {
 
     expect($job->getLogs()[$index]['status'])->toBe('completed');
 });
+
+test('markRunning clears stale terminal metadata', function () {
+    $job = BackupJob::create([
+        'status' => 'running',
+        'started_at' => now()->subHour(),
+        'completed_at' => now()->subMinutes(30),
+        'duration_ms' => 1800000,
+        'error_message' => 'previous attempt failed',
+        'error_trace' => 'previous trace',
+    ]);
+
+    expect($job->markRunning('queue-123'))->toBeTrue();
+
+    $job->refresh();
+    expect($job->status->value)->toBe('running')
+        ->and($job->job_id)->toBe('queue-123')
+        ->and($job->completed_at)->toBeNull()
+        ->and($job->duration_ms)->toBeNull()
+        ->and($job->error_message)->toBeNull()
+        ->and($job->error_trace)->toBeNull();
+});
+
+test('markCompleted clears stale error metadata only while running', function () {
+    $job = BackupJob::create([
+        'status' => 'running',
+        'started_at' => now()->subMinute(),
+        'error_message' => 'transient failure',
+        'error_trace' => 'transient trace',
+    ]);
+
+    expect($job->markCompleted())->toBeTrue();
+
+    $job->refresh();
+    expect($job->status->value)->toBe('completed')
+        ->and($job->error_message)->toBeNull()
+        ->and($job->error_trace)->toBeNull()
+        ->and($job->markCompleted())->toBeFalse();
+});
+
+test('claimForExecution refuses a terminal job', function () {
+    $job = BackupJob::create([
+        'status' => 'failed',
+        'completed_at' => now(),
+        'error_message' => 'queue timeout',
+    ]);
+
+    expect($job->claimForExecution('stale-queue-message'))->toBeFalse();
+
+    $job->refresh();
+    expect($job->status->value)->toBe('failed')
+        ->and($job->job_id)->toBeNull()
+        ->and($job->error_message)->toBe('queue timeout');
+});

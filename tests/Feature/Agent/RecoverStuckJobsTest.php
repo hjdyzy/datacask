@@ -86,7 +86,9 @@ test('fails backup jobs stuck in running state beyond timeout', function () {
 
     $job->refresh();
     expect($job->status)->toBe(BackupJobStatus::Failed)
-        ->and($job->error_message)->toContain('stuck in running state');
+        ->and($job->error_message)->toContain('stuck in running state')
+        ->and(collect($job->getLogs())->contains(fn (array $log) => ($log['level'] ?? null) === 'error'
+            && str_contains($log['message'] ?? '', 'stuck in running state')))->toBeTrue();
 });
 
 test('fails backup jobs stuck in pending state beyond timeout', function () {
@@ -102,7 +104,9 @@ test('fails backup jobs stuck in pending state beyond timeout', function () {
 
     $job->refresh();
     expect($job->status)->toBe(BackupJobStatus::Failed)
-        ->and($job->error_message)->toContain('stuck in pending state');
+        ->and($job->error_message)->toContain('stuck in pending state')
+        ->and(collect($job->getLogs())->contains(fn (array $log) => ($log['level'] ?? null) === 'error'
+            && str_contains($log['message'] ?? '', 'stuck in pending state')))->toBeTrue();
 });
 
 test('does not touch running backup jobs within timeout', function () {
