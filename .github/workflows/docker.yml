@@ -20,6 +20,12 @@ on:
       - '.github/workflows/release.yml'
       - '.github/workflows/tests.yml'
   workflow_dispatch:
+    inputs:
+      rebuild_base_image:
+        description: Rebuild the runtime image even when its build context is unchanged
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -41,14 +47,6 @@ jobs:
       base_image_tag: ${{ steps.base_image_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Check for base image changes
-        uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            base:
-              - 'docker/php/**'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -75,13 +73,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            tag="${GITHUB_REF_NAME#v}"
-          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
-            tag="latest"
-          else
-            tag="${GITHUB_REF_NAME}"
-          fi
+          tree_hash="$(git rev-parse HEAD:docker/php)"
+          tag="runtime-${tree_hash}"
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Check for existing base image
@@ -104,14 +97,10 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/datacask-php
             ${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAMESPACE }}/datacask-php
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/main' }}
+            type=raw,value=${{ steps.base_image_tag.outputs.tag }}
 
       - name: Build and push base image
-        if: steps.filter.outputs.base == 'true' || steps.base_image_check.outputs.exists != 'true'
+        if: steps.base_image_check.outputs.exists != 'true' || inputs.rebuild_base_image
         uses: docker/build-push-action@v7
         with:
           context: docker/php
@@ -128,7 +117,7 @@ jobs:
         shell: bash
         run: |
           echo "### Datacask runtime image" >> "${GITHUB_STEP_SUMMARY}"
-          if [[ "${{ steps.filter.outputs.base }}" == "true" || "${{ steps.base_image_check.outputs.exists }}" != "true" ]]; then
+          if [[ "${{ steps.base_image_check.outputs.exists }}" != "true" || "${{ inputs.rebuild_base_image }}" == "true" ]]; then
             echo "Built and pushed from docker/php/:" >> "${GITHUB_STEP_SUMMARY}"
             echo '```text' >> "${GITHUB_STEP_SUMMARY}"
             echo "${{ steps.meta.outputs.tags }}" >> "${GITHUB_STEP_SUMMARY}"
