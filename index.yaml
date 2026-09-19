@@ -5,8 +5,32 @@ entries:
       artifacthub.io/license: MIT
       artifacthub.io/readme: README.md
     apiVersion: v2
+    appVersion: 1.7.14-dc.9
+    created: "2026-09-19T15:29:14.625879356Z"
+    description: A Helm chart for Datacask - Database backup management application
+    digest: aa02986782bb69e9758f43b5b5b13440fcf3d1357521d4d8c97284262ece7721
+    home: https://hjdyzy.github.io/datacask/
+    keywords:
+    - database
+    - backup
+    - mysql
+    - postgresql
+    - mariadb
+    maintainers:
+    - name: hjdyzy
+    name: databasement
+    sources:
+    - https://github.com/hjdyzy/datacask
+    type: application
+    urls:
+    - https://hjdyzy.github.io/datacask/charts/databasement-1.7.14-dc.9.tgz
+    version: 1.7.14-dc.9
+  - annotations:
+      artifacthub.io/license: MIT
+      artifacthub.io/readme: README.md
+    apiVersion: v2
     appVersion: 1.7.14-dc.8
-    created: "2026-09-19T13:34:25.786461652Z"
+    created: "2026-09-19T15:29:14.624243426Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: fee797f9602754ac9dd8324cde9d8b223f69c01445fb08696b214dc418e42957
     home: https://hjdyzy.github.io/datacask/
@@ -30,7 +54,7 @@ entries:
       artifacthub.io/readme: README.md
     apiVersion: v2
     appVersion: 1.7.14-dc.7
-    created: "2026-09-19T13:34:25.784780001Z"
+    created: "2026-09-19T15:29:14.623560524Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: 919a071fa5c4ada3e924a9a4629af95c3f7736124d651a1e49115d893e9db88a
     home: https://hjdyzy.github.io/datacask/
@@ -54,7 +78,7 @@ entries:
       artifacthub.io/readme: README.md
     apiVersion: v2
     appVersion: 1.7.14-dc.6
-    created: "2026-09-19T13:34:25.784104937Z"
+    created: "2026-09-19T15:29:14.622792795Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: cfdbe3932702d08a7d9986ccbcce20fe62143f021d1e749299267aad10a444ee
     home: https://hjdyzy.github.io/datacask/
@@ -78,7 +102,7 @@ entries:
       artifacthub.io/readme: README.md
     apiVersion: v2
     appVersion: 1.7.14-dc.5
-    created: "2026-09-19T13:34:25.783420786Z"
+    created: "2026-09-19T15:29:14.622148445Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: e3b255797dc942439962b2e7b87e3ab1985e418314365bf74710ee85734e2281
     home: https://hjdyzy.github.io/datacask/
@@ -102,7 +126,7 @@ entries:
       artifacthub.io/readme: README.md
     apiVersion: v2
     appVersion: 1.7.14-dc.4
-    created: "2026-09-19T13:34:25.782686622Z"
+    created: "2026-09-19T15:29:14.621411082Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: b9b1d7ac97c4e83b293c91f0033068f0d4ea2d974e82f9ff111751059701fe34
     home: https://hjdyzy.github.io/datacask/
@@ -126,7 +150,7 @@ entries:
       artifacthub.io/readme: README.md
     apiVersion: v2
     appVersion: 1.7.14-dc.3
-    created: "2026-09-19T13:34:25.782040933Z"
+    created: "2026-09-19T15:29:14.620689098Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: ca1095ab3f4c0b1ead5e3d100334da5d79c9b6c4d3481c7db7a8e68f3492ece8
     home: https://hjdyzy.github.io/datacask/
@@ -150,7 +174,7 @@ entries:
       artifacthub.io/readme: README.md
     apiVersion: v2
     appVersion: 1.7.14-dc.2
-    created: "2026-09-19T13:34:25.781315836Z"
+    created: "2026-09-19T15:29:14.619979747Z"
     description: A Helm chart for Datacask - Database backup management application
     digest: 9b3992f356af58fbde5bb9624dc7dff5c28f085b62e24cfe3d6220750ee599f5
     home: https://hjdyzy.github.io/datacask/
@@ -169,4 +193,4 @@ entries:
     urls:
     - https://hjdyzy.github.io/datacask/charts/databasement-1.7.14-dc.2.tgz
     version: 1.7.14-dc.2
-generated: "2026-09-19T13:34:25.780418069Z"
+generated: "2026-09-19T15:29:14.619097945Z"
