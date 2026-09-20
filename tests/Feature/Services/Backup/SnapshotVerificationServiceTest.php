@@ -84,11 +84,13 @@ test('verifies all completed snapshots', function () {
     foreach ($snapshots as $snapshot) {
         $snapshot->update(['filename' => fake()->slug().'.sql.gz']);
         $snapshot->files()->update(['status' => SnapshotFileStatus::Completed]);
+        $snapshot->job->markRunning();
         $snapshot->job->markCompleted();
     }
 
     // Create a snapshot with no filename — should be skipped
     $skippedSnapshots = $factory->createSnapshots($server->backups->first(), 'manual');
+    $skippedSnapshots[0]->job->markRunning();
     $skippedSnapshots[0]->job->markCompleted();
 
     $mockFilesystem = Mockery::mock(Filesystem::class);
@@ -120,6 +122,7 @@ test('sends notification when newly missing files are detected in bulk mode', fu
     $snapshot = $snapshots[0];
     $snapshot->update(['filename' => 'backup.sql.gz']);
     $snapshot->files()->update(['status' => SnapshotFileStatus::Completed]);
+    $snapshot->job->markRunning();
     $snapshot->job->markCompleted();
 
     $mockFilesystem = Mockery::mock(Filesystem::class);
@@ -144,6 +147,7 @@ test('does not send notification when no new files are missing', function () {
     // Already marked as missing — not newly missing
     $snapshot->update(['filename' => 'backup.sql.gz']);
     $snapshot->files()->update(['status' => SnapshotFileStatus::Completed, 'file_exists' => false]);
+    $snapshot->job->markRunning();
     $snapshot->job->markCompleted();
 
     $mockFilesystem = Mockery::mock(Filesystem::class);

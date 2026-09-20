@@ -16,6 +16,7 @@ test('success rate card calculates correct rate', function () {
     // Create 3 completed jobs
     for ($i = 0; $i < 3; $i++) {
         $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
+        $snapshots[0]->job->markRunning();
         $snapshots[0]->job->markCompleted();
     }
 
@@ -36,6 +37,7 @@ test('success rate resets to zero when a refresh finds no completed or failed jo
     $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
 
     $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
+    $snapshots[0]->job->markRunning();
     $snapshots[0]->job->markCompleted();
 
     $component = Livewire::withoutLazyLoading()

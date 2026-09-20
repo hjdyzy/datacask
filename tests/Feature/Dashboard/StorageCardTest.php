@@ -20,6 +20,7 @@ test('storage card calculates total storage', function () {
     for ($i = 0; $i < 3; $i++) {
         $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
         $snapshots[0]->update(['file_size' => 1000]);
+        $snapshots[0]->job->markRunning();
         $snapshots[0]->job->markCompleted();
     }
 
@@ -41,6 +42,7 @@ test('storage card totals only the current organization', function () {
     $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
     $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
     $snapshots[0]->update(['file_size' => 1000]);
+    $snapshots[0]->job->markRunning();
     $snapshots[0]->job->markCompleted();
 
     $foreignOrg = Organization::factory()->create();

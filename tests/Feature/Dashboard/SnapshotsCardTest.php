@@ -17,6 +17,7 @@ test('snapshots card calculates correct total', function () {
     // Create 3 completed jobs
     for ($i = 0; $i < 3; $i++) {
         $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
+        $snapshots[0]->job->markRunning();
         $snapshots[0]->job->markCompleted();
     }
 
@@ -40,11 +41,13 @@ test('snapshots card shows missing snapshots count', function () {
     for ($i = 0; $i < 2; $i++) {
         $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
         $snapshots[0]->files()->update(['status' => SnapshotFileStatus::Completed, 'file_exists' => false, 'file_verified_at' => now()]);
+        $snapshots[0]->job->markRunning();
         $snapshots[0]->job->markCompleted();
     }
 
     // Create 1 normal snapshot
     $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
+    $snapshots[0]->job->markRunning();
     $snapshots[0]->job->markCompleted();
 
     Livewire::withoutLazyLoading()
@@ -64,6 +67,7 @@ test('snapshots card shows all verified when no snapshots are missing', function
     for ($i = 0; $i < 2; $i++) {
         $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
         $snapshots[0]->files()->update(['status' => SnapshotFileStatus::Completed, 'file_verified_at' => now()]);
+        $snapshots[0]->job->markRunning();
         $snapshots[0]->job->markCompleted();
     }
 
