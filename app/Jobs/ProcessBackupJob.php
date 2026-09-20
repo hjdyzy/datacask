@@ -221,7 +221,7 @@ class ProcessBackupJob implements ShouldQueue
         }
 
         $job = $snapshot->job;
-        if ($job && $job->status !== BackupJobStatus::Completed && $job->status !== BackupJobStatus::Failed) {
+        if ($job->status !== BackupJobStatus::Completed && $job->status !== BackupJobStatus::Failed) {
             $job->log("Backup failed: {$exception->getMessage()}", 'error', [
                 'exception' => get_class($exception),
                 'source' => 'queue_failed_callback',

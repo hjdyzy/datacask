@@ -7,7 +7,9 @@ use App\Facades\AppConfig;
 use App\Models\AgentJob;
 use App\Models\BackupJob;
 use App\Support\QueueTimeouts;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 
@@ -126,8 +128,10 @@ class RecoverStuckJobsCommand extends Command
 
     /**
      * Pending jobs can only be considered orphaned after the backup queue is empty.
+     *
+     * @return Collection<int, BackupJob>
      */
-    private function findOrphanedPendingBackupJobs($cutoff)
+    private function findOrphanedPendingBackupJobs(CarbonInterface $cutoff): Collection
     {
         return BackupJob::query()
             ->inProgress()
