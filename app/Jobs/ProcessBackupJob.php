@@ -35,6 +35,8 @@ class ProcessBackupJob implements ShouldQueue
 
     public int $backoff;
 
+    public bool $failOnTimeout = true;
+
     /**
      * Create a new job instance.
      */

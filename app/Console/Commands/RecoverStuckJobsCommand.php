@@ -8,6 +8,7 @@ use App\Models\AgentJob;
 use App\Models\BackupJob;
 use App\Support\QueueTimeouts;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 
 class RecoverStuckJobsCommand extends Command
@@ -72,30 +73,37 @@ class RecoverStuckJobsCommand extends Command
     }
 
     /**
-     * Recover backup jobs stuck in running/pending state beyond their timeout.
+     * Recover backup jobs stuck in running state beyond their timeout.
      *
-     * Running jobs are compared against started_at, while pending jobs (which
-     * were never picked up) are compared against created_at. A grace period is
-     * added on top of the configured timeout to avoid killing jobs that are
-     * still legitimately processing.
+     * Pending jobs remain queued until the queue has drained. This prevents
+     * queue backlog from being mistaken for an execution timeout.
      */
     private function recoverBackupJobs(): bool
     {
         $timeout = AppConfig::get('backup.job_timeout') + QueueTimeouts::RETRY_GRACE_SECONDS;
         $cutoff = now()->subSeconds($timeout);
+        $queueHasPendingJobs = Queue::size('backups') > 0;
 
         $stuckJobs = BackupJob::query()
             ->inProgress()
+            ->whereDoesntHave('snapshot.agentJobs', function ($query) {
+                $query->whereIn('status', [
+                    AgentJob::STATUS_PENDING,
+                    AgentJob::STATUS_CLAIMED,
+                    AgentJob::STATUS_RUNNING,
+                ]);
+            })
             ->where(function ($query) use ($cutoff) {
                 $query->where(function ($q) use ($cutoff) {
                     $q->where('status', BackupJobStatus::Running)
                         ->where('started_at', '<', $cutoff);
-                })->orWhere(function ($q) use ($cutoff) {
-                    $q->where('status', BackupJobStatus::Pending)
-                        ->where('created_at', '<', $cutoff);
                 });
             })
             ->get();
+
+        if (! $queueHasPendingJobs) {
+            $stuckJobs = $stuckJobs->merge($this->findOrphanedPendingBackupJobs($cutoff));
+        }
 
         if ($stuckJobs->isEmpty()) {
             return false;
@@ -114,5 +122,24 @@ class RecoverStuckJobsCommand extends Command
         $this->info("Backup jobs: failed {$stuckJobs->count()} stuck job(s).");
 
         return true;
+    }
+
+    /**
+     * Pending jobs can only be considered orphaned after the backup queue is empty.
+     */
+    private function findOrphanedPendingBackupJobs($cutoff)
+    {
+        return BackupJob::query()
+            ->inProgress()
+            ->where('status', BackupJobStatus::Pending)
+            ->where('created_at', '<', $cutoff)
+            ->whereDoesntHave('snapshot.agentJobs', function ($query) {
+                $query->whereIn('status', [
+                    AgentJob::STATUS_PENDING,
+                    AgentJob::STATUS_CLAIMED,
+                    AgentJob::STATUS_RUNNING,
+                ]);
+            })
+            ->get();
     }
 }

@@ -30,7 +30,8 @@ test('job is configured with correct queue and settings', function () {
     expect($job->queue)->toBe('backups')
         ->and($job->timeout)->toBe(5400)
         ->and($job->tries)->toBe(5)
-        ->and($job->backoff)->toBe(120);
+        ->and($job->backoff)->toBe(120)
+        ->and($job->failOnTimeout)->toBeTrue();
 });
 
 test('handle builds config from models and updates snapshot on success', function () {

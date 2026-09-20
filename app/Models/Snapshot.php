@@ -225,6 +225,16 @@ class Snapshot extends Model
     }
 
     /**
+     * Agent jobs associated with this snapshot.
+     *
+     * @return HasMany<AgentJob, Snapshot>
+     */
+    public function agentJobs(): HasMany
+    {
+        return $this->hasMany(AgentJob::class);
+    }
+
+    /**
      * The copy a restore or download should read from when the user didn't
      * pick one: the first successfully uploaded copy still present on its volume.
      */

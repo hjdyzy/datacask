@@ -2,6 +2,7 @@
 
 use App\Enums\BackupJobStatus;
 use App\Facades\AppConfig;
+use App\Jobs\ProcessBackupJob;
 use App\Models\Agent;
 use App\Models\AgentJob;
 use App\Models\BackupJob;
@@ -107,6 +108,39 @@ test('fails backup jobs stuck in pending state beyond timeout', function () {
         ->and($job->error_message)->toContain('stuck in pending state')
         ->and(collect($job->getLogs())->contains(fn (array $log) => ($log['level'] ?? null) === 'error'
             && str_contains($log['message'] ?? '', 'stuck in pending state')))->toBeTrue();
+});
+
+test('keeps stale pending backup jobs while the backup queue is not empty', function () {
+    AppConfig::set('backup.job_timeout', 3600);
+    config(['queue.default' => 'database']);
+
+    $job = BackupJob::create(['status' => 'pending']);
+    BackupJob::where('id', $job->id)->toBase()->update([
+        'created_at' => now()->subSeconds(3600 + 300 + 1),
+    ]);
+    $snapshot = Snapshot::factory()->create(['backup_job_id' => $job->id]);
+    ProcessBackupJob::dispatch($snapshot->id);
+
+    $this->artisan('jobs:recover-stuck')->assertExitCode(0);
+
+    expect($job->fresh()->status)->toBe(BackupJobStatus::Pending);
+});
+
+test('does not recover a stale local job while its agent job is active', function () {
+    AppConfig::set('backup.job_timeout', 3600);
+
+    $job = BackupJob::create(['status' => 'running']);
+    BackupJob::where('id', $job->id)->toBase()->update([
+        'started_at' => now()->subSeconds(3600 + 300 + 1),
+    ]);
+    $snapshot = Snapshot::factory()->create(['backup_job_id' => $job->id]);
+    AgentJob::factory()->running()->create([
+        'snapshot_id' => $snapshot->id,
+    ]);
+
+    $this->artisan('jobs:recover-stuck')->assertExitCode(0);
+
+    expect($job->fresh()->status)->toBe(BackupJobStatus::Running);
 });
 
 test('does not touch running backup jobs within timeout', function () {
