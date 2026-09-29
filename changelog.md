@@ -15,6 +15,22 @@ that shipped it. Releases before 1.0.0 are only listed on
 [GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
 are inherited from Databasement and keep their original upstream pull request links.
 
+## [1.7.14-dc.15] - 2026-09-30
+
+### Added
+
+- One-off backups of selected user databases from the server list or details, reusing an existing storage and retention configuration without changing scheduled database selection.
+- Operator comments, optional snapshot protection, cross-configuration duplicate checks, and retries that preserve the one-off database selection.
+
+### Changed
+
+- Application builds use the existing public Aliyun Node image; local environment files and Git worktree metadata are excluded from image build contexts.
+
+### Notes
+
+- Agent-backed servers do not support one-off selection. Redis/Valkey still uses whole-instance snapshots.
+- Version suffixes dc.13 and dc.14 were used for private releases; this public release advances to dc.15 to avoid Git tag collisions.
+
 ## [1.7.14-dc.7] - 2026-09-19
 
 ### Fixed

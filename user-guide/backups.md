@@ -67,7 +67,7 @@ the databases it covers in one of four ways:
 | **All databases** | Every user database found on the server. System databases such as `information_schema` and `mysql` are excluded automatically. |
 | **Selected** | Only the databases you pick. New databases on the server are not picked up automatically. |
 | **Pattern** | Every database whose name matches a case-insensitive regular expression, such as `^prod_`. |
-| **All except** | Every database **except** an exact list of names. This is the inverse of **Selected**, and system databases are included unless you exclude them explicitly. |
+| **All except** | Every user database **except** an exact list of names. This is the inverse of **Selected**; system databases are excluded automatically. |
 
 ### All except
 
@@ -81,18 +81,24 @@ Two details matter:
   exclude `Legacy_DB` or `legacy_db_archive`. Typing a name that does not exist
   on the server excludes nothing, so the backup simply covers one more database
   than you may expect.
-- **System databases are your choice.** Unlike **All databases**, this mode
-  shows the system databases reported by the server and backs them up unless
-  you add their names to the exclusion list. This keeps the result predictable
-  when a server has databases the normal list would hide.
+- **System databases are excluded automatically**, as in **All databases**.
+  They are not backup targets even if they appear in the database picker.
 
 The form shows a live preview of what will and will not be backed up. When you
 switch between **Selected** and **All except**, the list is cleared because the
 two modes give the same field opposite meanings.
 
-If the exclusion list covers every database the server reports, the run fails
+If the exclusion list covers every user database the server reports, the run fails
 with `No databases left to back up after applying the exclusion list.` instead
 of reporting a successful backup that contains nothing.
+
+## One-off Backups
+
+For a project-specific operation, use **One-off backup** on the database server
+page to select one or more user databases without changing the scheduled policy.
+It reuses an existing configuration's storage and retention settings, and records
+the operator and an optional comment. See the [one-off backup guide](one-off-backups.md)
+for supported database types, protection and duplicate-task handling.
 
 ## Failed Backups
 
