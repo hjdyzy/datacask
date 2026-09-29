@@ -12,6 +12,7 @@ Datacask 统一管理数据库实例、备份计划、备份文件和恢复任�
 - 支持 MySQL、MariaDB、PostgreSQL、SQL Server、MongoDB、SQLite、Firebird 和 Redis/Valkey。
 - 集中管理多个数据库实例和数据库。
 - 支持手动备份、定时备份及独立的保留策略。
+- 支持[临时备份指定数据库](docs/docs/user-guide/one-off-backups.md)，复用现有存储与保留配置，不修改定时策略。
 - 每个数据库生成独立备份，便于检索、下载和恢复。
 - 支持压缩、加密、完整性校验、失败通知和操作审计。
 - 支持恢复到原实例或兼容的其他实例。

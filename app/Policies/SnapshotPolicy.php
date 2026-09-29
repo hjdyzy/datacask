@@ -15,6 +15,7 @@ class SnapshotPolicy
             && $snapshot->backup !== null
             && ! ($snapshot->metadata['preflight_failure'] ?? false)
             && ! in_array($snapshot->database_name, ['(all databases)', '(preflight)'], true)
+            && (! ($snapshot->metadata['one_off'] ?? false) || ! $snapshot->locked || $user->can('lock', $snapshot))
             && $user->can('backup', $snapshot->databaseServer);
     }
 

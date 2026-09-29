@@ -141,6 +141,8 @@ class BackupJobFactory
         }
 
         $snapshot = DB::transaction(function () use ($backup, $server, $volumes, $databaseName, $method, $triggeredByUserId, $retryOfSnapshotId) {
+            // Serialize snapshot creation with one-off selection's active-job check.
+            DatabaseServer::query()->lockForUpdate()->findOrFail($server->id);
             $job = BackupJob::create(['status' => BackupJobStatus::Pending]);
 
             $snapshot = Snapshot::create([

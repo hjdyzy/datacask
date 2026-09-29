@@ -141,6 +141,10 @@
                                      class="text-accent" />
                     @endif
                     @can('backup', $server)
+                        @unless(auth()->user()->isDemo())
+                            <x-menu-item :title="__('One-off backup')" icon="o-circle-stack"
+                                         wire:click="$dispatch('open-one-off-backup', { serverId: '{{ $server->id }}' })" />
+                        @endunless
                         <x-menu-item :title="__('Backup now')" icon="bi.database-fill-up"
                                      wire:click="runBackupAll('{{ $server->id }}')" spinner
                                      class="text-info" />
@@ -183,6 +187,7 @@
 
     <!-- RESTORE MODAL -->
     <livewire:restore.modal />
+    <livewire:database-server.one-off-backup-modal />
 
     <!-- ADMINER MODAL -->
     <livewire:database-server.adminer-modal />

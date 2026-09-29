@@ -38,6 +38,9 @@
                         <div class="min-w-0">
                             <div class="text-sm text-base-content/70">
                                 {{ $this->selectedJob->snapshot ? __('Backup') : __('Restore') }}
+                                @if($this->selectedJob->snapshot?->metadata['one_off'] ?? false)
+                                    <span class="badge badge-info badge-sm">{{ __('One-off backup') }}</span>
+                                @endif
                                 @if($snapshot)
                                     <div class="badge">
                                         # {{ $snapshot->id }}

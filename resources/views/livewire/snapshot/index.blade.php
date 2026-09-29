@@ -48,6 +48,9 @@
                     <div class="min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="table-cell-primary truncate">{{ $snapshot->database_name }}</span>
+                            @if($snapshot->metadata['one_off'] ?? false)
+                                <span class="badge badge-info badge-xs">{{ __('One-off backup') }}</span>
+                            @endif
                         </div>
                         <div class="flex items-center gap-2 mt-1 flex-wrap">
                             <a href="{{ route('database-servers.show', $snapshot->databaseServer) }}" wire:navigate

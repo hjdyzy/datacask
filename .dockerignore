@@ -5,6 +5,10 @@
 /public/storage
 /storage/*.key
 /vendor
+/.env
+/.env.*
+/.git
+/.codex-tasks
 .env.local
 .env.backup
 .env.production

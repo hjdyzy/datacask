@@ -34,7 +34,7 @@ concurrency:
 env:
   ALIYUN_REGISTRY: registry.cn-guangzhou.aliyuncs.com
   ALIYUN_NAMESPACE: zhisuaninfo
-  NODE_IMAGE: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/node:22-slim-sha83f487e
+  NODE_IMAGE: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:base-node-22-slim-83f487e
 
 jobs:
   build-base-image:
