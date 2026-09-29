@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\DB;
  */
 function seedOrganizationSnapshot(Organization $org): string
 {
+    app(CurrentOrganization::class)->set($org);
+
     $volume = Volume::factory()->local()->create(['organization_id' => $org->id]);
 
     $backupFilename = 'org-delete-test.sql.gz';
@@ -30,11 +32,6 @@ function seedOrganizationSnapshot(Organization $org): string
 
     $backup = $server->backups->first();
     $backup->volumes()->sync([$volume->id]);
-    // Preload the org-scoped relations so the factory resolves them regardless
-    // of the resolved organization context during the test.
-    $backup->setRelation('databaseServer', $server);
-    $backup->setRelation('volumes', new \Illuminate\Database\Eloquent\Collection([$volume]));
-
     $snapshot = app(BackupJobFactory::class)->createSnapshots($backup, 'manual')[0];
     $snapshot->update(['filename' => $backupFilename, 'file_size' => filesize($backupFilePath)]);
     $snapshot->files()->update(['status' => SnapshotFileStatus::Completed]);
