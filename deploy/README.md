@@ -24,7 +24,7 @@ cd /opt/datacask
 
 ```bash
 set -euo pipefail
-DATACASK_SOURCE_REF=v1.10.12-dc.17
+DATACASK_SOURCE_REF=v1.10.12-dc.18
 DATACASK_RAW_URL="https://raw.githubusercontent.com/hjdyzy/datacask/${DATACASK_SOURCE_REF}/deploy"
 
 curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
