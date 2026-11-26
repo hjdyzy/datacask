@@ -7,11 +7,15 @@ use App\Actions\Role\SyncUserAbilitiesAction;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Lorisleiva\Actions\Concerns\AsFake;
+use Lorisleiva\Actions\Concerns\AsObject;
 
-class InviteUser
+class InviteUserAction
 {
+    use AsFake, AsObject;
+
     /** @param list<string>|null $abilities */
-    public function run(
+    public function handle(
         Organization $organization,
         string $name,
         string $email,

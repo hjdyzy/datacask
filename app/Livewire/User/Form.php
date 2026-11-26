@@ -4,7 +4,7 @@ namespace App\Livewire\User;
 
 use App\Actions\Role\AssignRoleToUserAction;
 use App\Actions\Role\SyncUserAbilitiesAction;
-use App\Actions\User\InviteUser;
+use App\Actions\User\InviteUserAction;
 use App\Enums\Ability;
 use App\Models\Organization;
 use App\Models\User;
@@ -62,7 +62,7 @@ class Form extends \Livewire\Form
             'abilities.*' => Rule::in(Ability::names()),
         ]);
 
-        return app(InviteUser::class)->run(
+        return InviteUserAction::run(
             app(CurrentOrganization::class)->model(),
             $this->name,
             $this->email,

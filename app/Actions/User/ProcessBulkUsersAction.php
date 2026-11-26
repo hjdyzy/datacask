@@ -8,14 +8,18 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Lorisleiva\Actions\Concerns\AsFake;
+use Lorisleiva\Actions\Concerns\AsObject;
 
-class ProcessBulkUsers
+class ProcessBulkUsersAction
 {
+    use AsFake, AsObject;
+
     /**
      * @param  list<int>  $ids
      * @return list<array{id: int, email: ?string, message: ?string, link: ?string, failed: bool}>
      */
-    public function run(User $actor, Organization $organization, array $ids, string $action, string $role): array
+    public function handle(User $actor, Organization $organization, array $ids, string $action, string $role): array
     {
         Gate::forUser($actor)->authorize('viewAny', User::class);
 

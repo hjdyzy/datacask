@@ -8,19 +8,23 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use Lorisleiva\Actions\Concerns\AsFake;
+use Lorisleiva\Actions\Concerns\AsObject;
 
-class ImportUserInvitations
+class ImportUserInvitationsAction
 {
+    use AsFake, AsObject;
+
     public const MAX_ROWS = 200;
 
     public const MAX_FILE_KB = 128;
 
     /** @return list<array{id: int, email: ?string, message: ?string, link: ?string, failed: bool}> */
-    public function run(Organization $organization, string $csv, string $role, InviteUser $invite): array
+    public function handle(Organization $organization, string $csv, string $role): array
     {
         $results = [];
         foreach ($this->parseRows($csv) as $line => $columns) {
-            $results[] = $this->importRow($organization, $role, $line, $columns, $invite);
+            $results[] = $this->importRow($organization, $role, $line, $columns);
         }
 
         return $results;
@@ -72,7 +76,7 @@ class ImportUserInvitations
      * @param  list<string>  $columns
      * @return array{id: int, email: ?string, message: ?string, link: ?string, failed: bool}
      */
-    private function importRow(Organization $organization, string $role, int $line, array $columns, InviteUser $invite): array
+    private function importRow(Organization $organization, string $role, int $line, array $columns): array
     {
         if (count($columns) !== 2) {
             return $this->result($line, null, __('Each CSV row must have a name and an email.'), failed: true);
@@ -92,7 +96,7 @@ class ImportUserInvitations
         }
 
         try {
-            $user = $invite->run($organization, $name, $email, $role);
+            $user = InviteUserAction::run($organization, $name, $email, $role);
         } catch (UniqueConstraintViolationException $exception) {
             if (! $this->emailExists($email)) {
                 return $this->failedRow($line, $email, $exception);

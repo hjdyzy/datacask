@@ -2,7 +2,7 @@
 
 namespace App\Livewire\User;
 
-use App\Actions\User\ProcessBulkUsers;
+use App\Actions\User\ProcessBulkUsersAction;
 use App\Livewire\Concerns\ConfirmsDeletion;
 use App\Livewire\Concerns\FiltersAndPaginates;
 use App\Models\User;
@@ -186,11 +186,11 @@ class Index extends Component
         $this->showBulkConfirmation = true;
 
         if ($action === 'invite') {
-            $this->applyBulkAction(app(ProcessBulkUsers::class));
+            $this->applyBulkAction();
         }
     }
 
-    public function applyBulkAction(ProcessBulkUsers $processor): void
+    public function applyBulkAction(): void
     {
         $this->authorize('viewAny', User::class);
         if (! $this->showBulkConfirmation || $this->bulkIds === []) {
@@ -204,7 +204,7 @@ class Index extends Component
             $this->validate(['bulkRole' => ['required', Rule::in(array_column($this->roleFilterOptions(), 'id'))]]);
         }
 
-        $this->bulkResults = $processor->run(auth()->user(), $organization, $this->bulkIds, $this->bulkAction, $this->bulkRole);
+        $this->bulkResults = ProcessBulkUsersAction::run(auth()->user(), $organization, $this->bulkIds, $this->bulkAction, $this->bulkRole);
         $this->clearSelection();
         $this->showBulkResults = true;
     }
@@ -347,7 +347,7 @@ class Index extends Component
 
     private function getRemoveBlockReason(User $user): string
     {
-        return ProcessBulkUsers::removalBlockReason($user) ?? '';
+        return ProcessBulkUsersAction::removalBlockReason($user) ?? '';
     }
 
     public function render(): View

@@ -3,8 +3,7 @@
 namespace App\Livewire\User;
 
 use App\Actions\Role\AssignRoleToUserAction;
-use App\Actions\User\ImportUserInvitations;
-use App\Actions\User\InviteUser;
+use App\Actions\User\ImportUserInvitationsAction;
 use App\Models\Organization;
 use App\Models\Scopes\OrganizationScope;
 use App\Models\User;
@@ -72,7 +71,7 @@ class Create extends Component
         $this->showCopyModal = true;
     }
 
-    public function importInvitations(ImportUserInvitations $import, InviteUser $invite): void
+    public function importInvitations(): void
     {
         $this->authorize('create', User::class);
         $organization = app(CurrentOrganization::class)->model();
@@ -80,8 +79,8 @@ class Create extends Component
 
         $this->validate([
             'batchRole' => ['required', Rule::in(array_column($this->form->roleOptions(), 'id'))],
-            'batchCsv' => ['required_without:batchFile', 'string', 'max:'.(ImportUserInvitations::MAX_FILE_KB * 1024)],
-            'batchFile' => ['nullable', 'file', 'extensions:csv', 'max:'.ImportUserInvitations::MAX_FILE_KB],
+            'batchCsv' => ['required_without:batchFile', 'string', 'max:'.(ImportUserInvitationsAction::MAX_FILE_KB * 1024)],
+            'batchFile' => ['nullable', 'file', 'extensions:csv', 'max:'.ImportUserInvitationsAction::MAX_FILE_KB],
         ], attributes: [
             'batchRole' => __('Role'),
             'batchCsv' => __('CSV content'),
@@ -93,7 +92,7 @@ class Create extends Component
             throw ValidationException::withMessages(['batchFile' => __('Could not read the uploaded CSV file.')]);
         }
 
-        $this->bulkResults = $import->run($organization, $csv, $this->batchRole, $invite);
+        $this->bulkResults = ImportUserInvitationsAction::run($organization, $csv, $this->batchRole);
         $this->reset('batchCsv', 'batchFile');
         $this->showBulkResults = true;
     }

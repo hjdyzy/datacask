@@ -1,6 +1,6 @@
 <?php
 
-use App\Actions\User\ImportUserInvitations;
+use App\Actions\User\ImportUserInvitationsAction;
 use App\Enums\Ability;
 use App\Livewire\User\Create;
 use App\Models\Organization;
@@ -51,7 +51,7 @@ test('a CSV file can be uploaded to invite users', function () {
 
 test('invalid roles and oversized batches are rejected before creating invitations', function () {
     $actor = User::factory()->superAdmin()->create();
-    $csv = implode("\n", array_map(fn (int $n): string => "User {$n},bulk{$n}@example.test", range(1, ImportUserInvitations::MAX_ROWS + 1)));
+    $csv = implode("\n", array_map(fn (int $n): string => "User {$n},bulk{$n}@example.test", range(1, ImportUserInvitationsAction::MAX_ROWS + 1)));
 
     Livewire::actingAs($actor)->test(Create::class)
         ->set('batchCsv', $csv)
