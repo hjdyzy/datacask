@@ -10,24 +10,24 @@ Database servers are the source of your backups. Datacask can connect to and bac
 
 Datacask uses standard CLI tools to perform backup and restore operations. The table below shows which database engine versions are supported, based on the CLI tools shipped in the Docker image.
 
-| Engine     | Supported Versions           | CLI Tool                     | Restore |
-|------------|------------------------------|------------------------------|---------|
-| MySQL      | 5.6, 5.7, 8.x, 9.x, 26.x     | `mariadb-dump`               | Yes     |
-| MariaDB    | 10.x, 11.x, 12.x             | `mariadb-dump`               | Yes     |
-| PostgreSQL | 12, 13, 14, 15, 16, 17, 18   | `pg_dump` v16 / v18          | Yes     |
-| SQL Server | 2017, 2019, 2022, Azure SQL  | `sqlpackage` (`.dacpac`)     | Yes     |
-| MongoDB    | 4.2, 4.4, 5.0, 6.0, 7.0, 8.0 | `mongodump` / `mongorestore` | Yes     |
-| SQLite     | 3.x                          | File copy                    | Yes     |
-| Firebird   | 3.x, 4.x, 5.x                | `gbak` v5                    | Yes     |
-| Redis      | 2.8+                         | `redis-cli --rdb`            | No      |
-| Valkey     | 7.2+                         | `redis-cli --rdb`            | No      |
+| Engine     | Supported Versions            | CLI Tool                     | Restore |
+|------------|-------------------------------|------------------------------|---------|
+| MySQL      | 5.5, 5.6, 5.7, 8.x, 9.x, 26.x | `mysqldump`                  | Yes     |
+| MariaDB    | 5.x, 10.x, 11.x, 12.x         | `mariadb-dump` / `mysqldump` | Yes     |
+| PostgreSQL | 12, 13, 14, 15, 16, 17, 18    | `pg_dump` v16 / v18          | Yes     |
+| SQL Server | 2017, 2019, 2022, Azure SQL   | `sqlpackage` (`.dacpac`)     | Yes     |
+| MongoDB    | 4.2, 4.4, 5.0, 6.0, 7.0, 8.0  | `mongodump` / `mongorestore` | Yes     |
+| SQLite     | 3.x                           | File copy                    | Yes     |
+| Firebird   | 3.x, 4.x, 5.x                 | `gbak` v5                    | Yes     |
+| Redis      | 2.8+                          | `redis-cli --rdb`            | No      |
+| Valkey     | 7.2+                          | `redis-cli --rdb`            | No      |
 
 :::info How this works
-- **MySQL / MariaDB**: Datacask ships the MariaDB 11.4 client (`mariadb-dump`), which is wire-protocol compatible with MySQL servers. On MySQL 26.0 and later, stored procedures and functions are left out of the dump: the client reads MySQL's new YY.M version number (9.7 → 26.7) as a MariaDB one and asks for stored packages, which MySQL rejects. Tables, data, views and triggers are unaffected, and the job logs a warning.
+- **MySQL / MariaDB**. Datacask selects a dump client from the version the server reports. The Datacask image includes MariaDB 10.6 for MySQL servers before 5.7. Oracle's `mysqldump` handles MySQL 5.7 and later, including the YY.M version scheme, and MariaDB versions before 10.2. MariaDB 10.2 and later use the bundled `mariadb-dump`, which is also used when the server version cannot be read. Extra dump flags must be accepted by the client used for that server. For example, `--column-statistics=0` is specific to Oracle's `mysqldump`.
 - **PostgreSQL**: Datacask ships both the v16 and the v18 client and runs whichever one matches the server: v16 for servers up to 16, v18 for 17 and later. A dump only replays into a server at least as new as the client that wrote it, so a single v18 client would produce snapshots that no server below 17 could restore, not even the one they came from. Each client dumps from any server back to 9.2. Versions below 12 have reached end-of-life and are not recommended.
 - **SQL Server**: Backups are extracted as `.dacpac` files (schema + table data) using Microsoft's `sqlpackage` CLI (`/Action:Extract`) and re-applied with `/Action:Publish`. Server-bound objects (logins, users, permissions, role memberships) are excluded so backups stay portable across instances and don't fail on Windows-auth principals like `[NT AUTHORITY\SYSTEM]`. Works against on-prem SQL Server 2017+ and Azure SQL Database. Connections use the `pdo_sqlsrv` PHP extension.
 - **MongoDB**: The MongoDB Database Tools (`mongodump` / `mongorestore`) officially support server versions 4.2 through 8.0.
-- **SQLite**: Backups are performed by copying the database file over SFTP. The SQLite 3.x file format has been backwards-compatible since 3.0.0 (2004).
+- **SQLite**: A file on the host running the backup is snapshotted with `sqlite3 .backup`; a file on another machine is copied over SFTP (see [SQLite](#sqlite) below). The SQLite 3.x file format has been backwards-compatible since 3.0.0 (2004).
 - **Firebird**: Backups use `gbak` to produce a portable `.fbk` transportable backup file; restore replays it with `gbak -rep`, which replaces the target `.fdb` if one already exists. Datacask ships the Firebird 5 client, which can back up and restore Firebird 3.x, 4.x, and 5.x servers. Each `.fdb` file on the server is its own database, so backup configuration is path-based (like SQLite) rather than name-based.
 - **Redis / Valkey**: `redis-cli --rdb` creates a point-in-time RDB snapshot via the replication protocol. Valkey 7.2+ is supported as a drop-in replacement for Redis. Restore is not supported.
 :::
@@ -121,6 +121,21 @@ GRANT owning_role TO databasement;
 
 Restoring into an empty database avoids the problem entirely.
 
+#### Handing the restored database to another role
+
+A PostgreSQL restore can name an owner (the "Transfer database ownership" field, or `options.owner_user` in the API). Databasement then makes that role the owner of the database before restoring into it, and, unless the snapshot preserved ownership and privileges, runs the restore as that role (`SET ROLE`), so every object the restore creates belongs to it.
+
+A superuser can hand a database to any role. Any other user, such as the admin user of RDS, Azure or Cloud SQL, needs membership in the owner role. Creating the role is not enough on PostgreSQL 16 and later:
+
+```sql
+GRANT app_owner TO databasement;
+```
+
+Because the restore runs as the owner:
+
+- restoring into an existing database without recreating it needs the owner to own the objects already there, as the dump drops and recreates them;
+- a snapshot that creates an extension the owner may not create (an untrusted one, such as PostGIS) fails; restore such snapshots without an owner.
+
 ### Microsoft SQL Server
 
 SQL Server uses `sqlpackage` to extract and publish `.dacpac` files (schema + table data). Supports on-prem SQL Server 2017+ and Azure SQL Database (default port: 1433). Server-level objects (logins, users, permissions, role memberships) are excluded from the backup.
@@ -183,16 +198,23 @@ Redis/Valkey supports backup only. Restore is not currently supported due to the
 
 ### SQLite
 
-SQLite databases are backed up by copying the database file directly. Datacask connects to the remote server via SFTP (through an SSH tunnel) to access the file.
+SQLite has no server to connect to, so Datacask reads the database file itself. How it does that depends on where the file lives:
+
+- **On the host running the backup** (SSH tunnel disabled): Datacask runs `sqlite3 <path> ".backup …"`, which uses SQLite's online backup API and produces a consistent snapshot even while the application is writing to the database, including in WAL mode.
+- **On another machine** (SSH tunnel enabled): Datacask downloads the database file over SFTP, along with its `-wal` and `-shm` files when present, then consolidates them locally. This is a plain file copy, so it is only consistent if no process has the database open during the transfer: even without new writes, the last connection closing can checkpoint the WAL mid-copy. A clean backup log does not prove a consistent copy, so shut the application down cleanly for the whole backup, or use a remote agent (see below).
 
 #### Connection settings
 
 | Field | Description |
 |-------|-------------|
-| Database paths | One or more absolute paths to `.sqlite` files on the remote server |
+| Database paths | One or more absolute paths to SQLite database files, on the host running the backup or, with the SSH tunnel enabled, on the remote server |
+
+:::tip Consistent backups of SQLite files on another machine
+Run a [remote agent](./agents.md) on the machine that holds the databases and register the server on that agent with the SSH tunnel disabled. The agent then takes the `sqlite3 .backup` snapshot locally, with no SFTP race. Mount the directory containing the databases into the agent container read-write (SQLite writes the `-shm` file even when only reading a WAL database), and enter the paths as they appear inside the container.
+:::
 
 :::note
-SQLite requires an SSH tunnel to access remote database files. Datacask uses SFTP over the tunnel to copy and restore files.
+Restoring writes the snapshot over the configured path: directly on the host running the restore, or over SFTP when the SSH tunnel is enabled. Before restoring, stop every application and connection using the database, then move the database file and any `-wal`, `-shm` or `-journal` file next to it to a safe place. SQLite would otherwise replay a leftover `-wal` or `-journal` onto the restored snapshot and corrupt it.
 :::
 
 ### Firebird
@@ -221,6 +243,14 @@ GRANT RDB$ADMIN TO databasement;
 :::note Restore replaces the target file
 Restore is performed with `gbak -rep`, which writes a fresh `.fdb` at the target path and replaces an existing file at that path if one is present. The user supplies the destination path during restore.
 :::
+
+## Dump Command Configuration
+
+Every server form has a **Dump Command Configuration** section that tunes the command Databasement runs to produce the dump. A live **Command preview** below the fields shows exactly what will be executed. The section is unavailable for SQLite, which is copied as a file rather than dumped.
+
+### Extra Dump Flags
+
+Free-form flags appended to the dump command, for example `--no-tablespaces --column-statistics=0`. Each whitespace-separated token is passed to the dump tool as a single argument.
 
 ## Browsing Data with Adminer
 

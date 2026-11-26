@@ -72,10 +72,130 @@ are inherited from Databasement and keep their original upstream pull request li
 
 - Product, documentation, release, container image, and Helm links now use Datacask resources.
 
-## [1.7] - 2026-09-07 {#v1-7}
+## [1.10] - 2026-11-26 {#v1-10}
 
 ### Added
 
+- `1.10.12-dc.17` Organization administrators can select users across pages, include all matches, and process up to 200 users per batch. Bulk actions cover role changes, invitation links, organization removal, and deletion
+- `1.10.12-dc.17` The Add User page accepts uploaded or pasted CSV lists to create pending accounts with a shared organization role. Results include invitation links and reasons for skipped or failed rows
+- `1.10.12` Google Drive can be used as a backup volume, with OAuth credentials (client ID, client secret and refresh token) and an optional target folder ([#761](https://github.com/David-Crty/databasement/pull/761))
+- `1.10.12` The credentials of a volume that holds snapshots can be updated, so a rotated key or a revoked Google Drive token no longer strands its snapshots. The location stays locked, and new credentials are only saved if a connection test with them succeeds ([#786](https://github.com/David-Crty/databasement/pull/786))
+- `1.10.12` `php artisan key:reencrypt` re-encrypts every stored credential with the current `APP_KEY`, finishing a key rotation, and `--check` confirms that `APP_PREVIOUS_KEYS` can be dropped. The docs describe the full rotation procedure, including keeping encrypted backups readable ([#757](https://github.com/David-Crty/databasement/pull/757))
+- `1.10.12` The Snapshots search and the API filters also match snapshot comments ([#782](https://github.com/David-Crty/databasement/pull/782))
+- `1.10.11` Notifications can be sent to PushPlus, with an optional delivery channel and group topic, which the generic webhook could not reach. A message PushPlus rejects, such as one with a wrong token, makes the test notification fail instead of reporting success ([#774](https://github.com/David-Crty/databasement/pull/774))
+- `1.10.11` The database server list can be filtered by database type, like the Snapshots list ([#764](https://github.com/David-Crty/databasement/pull/764))
+- `1.10.9` `TLS_CA_BUNDLE` points SSO and remote agent connections at a PEM file to trust instead of the system CAs, so an identity provider or Databasement server whose certificate comes from a private CA, or is self-signed, can be used. `TLS_VERIFY=false` skips verification, for testing only ([#755](https://github.com/David-Crty/databasement/pull/755))
+- `1.10.7` Setting `ANALYTICS_SNIPPET` adds your own analytics tag, such as Umami or Plausible, to the head of every page, including the pages of logged-in users. Nothing is added while it is empty ([#724](https://github.com/David-Crty/databasement/pull/724))
+- `1.10.4` "Backup selected databases" in the database server row menu backs up only the databases you pick, for that one run, such as just the ones an application update touches. Scheduled backups keep their full scope. On a server backed up through an agent in all or pattern mode, the choice is among the databases that configuration has backed up before. Redis servers do not offer it ([#711](https://github.com/David-Crty/databasement/pull/711))
+- `1.10.3` The Snapshots and Restores lists show duration in its own sortable column, and the Snapshots list does the same for size, so the slowest or largest jobs can be found at a glance. The status cell no longer repeats them, but a running job still shows its elapsed time there ([#710](https://github.com/David-Crty/databasement/pull/710))
+- `1.10.3` The database server page shows the total size of its completed snapshots next to their count ([#709](https://github.com/David-Crty/databasement/pull/709))
+- `1.10.2` The database server list shows an Agent badge next to the name of each server backed up through an agent, green when it is online and red when it is offline or never connected, with the agent name in a popover. On the Agents page, an outdated version badge explains on hover that the agent Docker image needs updating ([#708](https://github.com/David-Crty/databasement/pull/708))
+- `1.10.1` API tokens can be limited to chosen abilities when created from Settings → API Tokens, and the token list shows each token's access. A scoped token can only do what its abilities cover, even for a super admin; existing tokens keep full access ([#526](https://github.com/David-Crty/databasement/pull/526))
+- `1.10.0` Snapshots of a server run through a remote agent can be deleted, by hand or through retention, when the app cannot reach their volume: the files it cannot delete are handed to the agent, and the snapshot shows as Deleting until the agent reports. Agents older than 1.10.0 are never handed these deletions, which fail after waiting the backup job timeout, so upgrade agents along with the server ([#695](https://github.com/David-Crty/databasement/pull/695))
+
+### Changed
+
+- `1.10.0` Artisan commands no longer read the database while booting, so `php artisan key:generate --show` from the install docs returns at once where the database is unreachable, instead of after more than 100 seconds ([#697](https://github.com/David-Crty/databasement/pull/697))
+
+### Removed
+
+- `1.10.6` The startup log and the Volumes page no longer warn about deprecated `AWS_*` variables when `AWS_REGION` or `AWS_DEFAULT_REGION` is set. On EKS with IRSA, Pod Identity or ECS, the platform injects them and S3 volumes without access keys rely on them, so the advice to remove them was wrong. The `BACKUP_*` warning on the Backup configuration page is gone too ([#714](https://github.com/David-Crty/databasement/pull/714))
+
+### Fixed
+
+- `1.10.12` GFS retention keeps the right snapshot for each month in its monthly tier when it runs at the end of a month, instead of skipping a shorter month, such as September on October 31, and deleting its snapshot ([#780](https://github.com/David-Crty/databasement/pull/780))
+- `1.10.12` A local SQLite restore keeps the existing database file's permissions instead of resetting them to 0640, so an application relying on group write access keeps it. A failed copy no longer leaves a partial new file behind ([#785](https://github.com/David-Crty/databasement/pull/785))
+- `1.10.12` SQLite backups over SFTP no longer fail when the WAL or SHM file is empty, as it is after an automatic checkpoint. An empty main database file still fails the backup ([#765](https://github.com/David-Crty/databasement/pull/765))
+- `1.10.9` Adminer is the official 6.2.0 release with the Hever design, which has a dark mode, so hovered links, the edit icon and the Limit and Text length fields display correctly again ([#756](https://github.com/David-Crty/databasement/pull/756))
+- `1.10.8` Choosing "Create new" for the SSH tunnel when editing a database server creates a new SSH configuration, instead of overwriting the existing one so that every other server sharing it silently tunnelled through the new host. The SSH connection test of a replacement private key no longer falls back to the stored passphrase, so a test can no longer pass while the next backup fails ([#738](https://github.com/David-Crty/databasement/pull/738))
+- `1.10.8` Warnings and errors from the app and the agent go to stderr and everything else to stdout, so journald, Cockpit and Kubernetes tooling show their real level instead of marking agent errors as info. The Docker image now sets `LOG_CHANNEL=stdio`, so the app's own logs reach the container output instead of a file inside the container ([#736](https://github.com/David-Crty/databasement/pull/736))
+- `1.10.5` MySQL backups on Amazon Aurora and RDS work again, instead of failing with "Access denied" since 1.10. Dumps no longer take a global read lock or carry the server's `GTID_PURGED` line, as before 1.10; add `--set-gtid-purged=ON` to the dump flags to keep it ([#713](https://github.com/David-Crty/databasement/pull/713))
+- `1.10.1` Two backups of the same database that finish in the same second each get their own file, instead of the second overwriting the first so that deleting either snapshot, even a locked one, removed the file the other still used. Backup file names now end with a short random suffix ([#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` Deleting a database server, a volume or an organization removes its backup files first, and deletes nothing when a file cannot be removed, instead of leaving untracked files on unreachable storage. The web UI says so and the API answers 409; retry once the storage is reachable, or delete while keeping the files. Snapshots whose file an interrupted deletion already removed are no longer offered for download or restore ([#702](https://github.com/David-Crty/databasement/pull/702))
+- `1.10.1` Volume names only need to be unique within an organization, so creating a volume no longer fails because another organization uses the name. A taken name answers 422 on the API instead of a server error, and merging organizations renames a clashing volume after the organization it came from, such as "Local (Acme)" ([#702](https://github.com/David-Crty/databasement/pull/702), [#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` A custom role still held by users can no longer be deleted, and the Roles screen asks to give its members another role first, instead of leaving them without any abilities. Deleting or merging an organization also removes its role assignments and direct ability grants ([#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` "Backup now" on a whole server shows each backup configuration as started, waiting for its agent to list the databases, or failed with the reason, instead of always saying every backup started. A single backup on an agent-backed server in all or pattern mode says the discovery was dispatched ([#702](https://github.com/David-Crty/databasement/pull/702))
+- `1.10.1` A backup in all or pattern mode that matches no database, or whose server cannot be listed, records a failed job and sends a failure notification, instead of reporting that the backup started on the web, the API and MCP ([#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` Triggering a backup on a server whose backups are disabled says so (422 on the API, a tool error on MCP) instead of answering that permission is denied ([#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` A failed backup or restore sends its failure notification only once, and a restore that cannot be handed to its agent is now notified too ([#702](https://github.com/David-Crty/databasement/pull/702), [#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` Volumes in notify-only storage limit mode warn when a backup taken by a remote agent goes past the limit, and also when another target volume of the same backup failed ([#702](https://github.com/David-Crty/databasement/pull/702))
+- `1.10.1` The Scheduled Restores page shows why a run was skipped, in words, including a restore that was rejected, such as a snapshot stored only on a local volume for a target run through an agent ([#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` Changing a server's SSH tunnel between password and key authentication, or enabling it, requires the new credential instead of saving a tunnel with none, and drops the credentials of the type no longer used along with an old key's passphrase ([#702](https://github.com/David-Crty/databasement/pull/702), [#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` The API refuses with 409 to delete a backup schedule still used by backups or scheduled restores of any organization, instead of failing with a server error, and rejects a scheduled restore onto the application's own database when it is saved ([#702](https://github.com/David-Crty/databasement/pull/702))
+- `1.10.1` Snapshots and scheduled restores just created through the API return their default values instead of `null` ([#704](https://github.com/David-Crty/databasement/pull/704))
+- `1.10.1` The MCP restore tool answers with a tool error when a restore cannot be handed to its agent, and API, MCP and console messages stay in English whatever `APP_LOCALE` says ([#702](https://github.com/David-Crty/databasement/pull/702))
+- `1.10.1` A stuck agent job is failed even when its "lost contact" log line cannot be written ([#702](https://github.com/David-Crty/databasement/pull/702))
+- `1.10.0` **Breaking:** The queue worker runs as the application user set by `PUID`/`PGID` instead of root, so the app can delete the backups it writes, and agents drop to that user too. The worker service is now the same image started with `ENABLE_QUEUE_WORKER`, `ENABLE_WEB_SERVER` and `ENABLE_SCHEDULER`; an old `command:` running `artisan queue:work` still works with a warning but its arguments are ignored, and the Helm chart no longer reads `worker.command`. Backups outside `/data` written by an older worker need a one-off `chown`, described in the "Migrate to 1.10" page ([#696](https://github.com/David-Crty/databasement/pull/696))
+- `1.10.0` A snapshot whose file could not be deleted from its volume is kept, with the error shown on the copy left, so deleting it again or the next retention run retries instead of leaving an untracked file behind. One failed deletion no longer stops retention from cleaning up the other snapshots ([#694](https://github.com/David-Crty/databasement/pull/694))
+- `1.10.0` Registering the first user creates the demo database server and backup again, instead of failing silently and leaving the new install empty ([#698](https://github.com/David-Crty/databasement/pull/698))
+
+### Security
+
+- `1.10.10` In the Docker image, supervisord, which runs as root, can no longer be controlled or reconfigured by the application user: its unused control socket is gone and its configuration ships root-owned and read-only in `/etc/supervisor` instead of the app-writable `/config`. The image can now also start with a read-only root filesystem ([#763](https://github.com/David-Crty/databasement/pull/763))
+- `1.10.9` With generic OIDC, a login is only linked by email to an existing user when the provider sends `email_verified: true`, so nobody can take over an account by registering its email address on the provider ([GHSA-mh6w-2cch-w8v8](https://github.com/David-Crty/databasement/security/advisories/GHSA-mh6w-2cch-w8v8)). A provider that sends no such claim, such as Microsoft Entra ID, gets an explanatory error instead: set `OAUTH_OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM=true` only if users cannot change their own email there. Linking no longer clears the user's password, and if OIDC was enabled, check the `oauth_identities` table for identities you do not recognise
+- `1.10.9` Webhook, Gotify, Discord and Slack notifications no longer follow redirects, so an endpoint can no longer bounce deliveries to the instance metadata address, and a redirect counts as a failed delivery. The test-notification toast only shows the HTTP status of a failure, instead of part of the response or the webhook URL ([#758](https://github.com/David-Crty/databasement/pull/758))
+- `1.10.6` The Docker image ships PHP 8.5.12, which fixes CVE-2026-109618 and CVE-2026-109619. The base image moves from FrankenPHP 1.12 to 1.13, as upstream no longer rebuilds the 1.12 tags ([#716](https://github.com/David-Crty/databasement/pull/716))
+- `1.10.2` The social login library (`laravel/socialite`) is updated to 5.30.0, which fixes a token replay in its Facebook OIDC provider (CWE-294). Databasement only uses the generic OIDC provider, so it was not exploitable ([#707](https://github.com/David-Crty/databasement/pull/707))
+
+## [1.9] - 2026-10-11 {#v1-9}
+
+### Added
+
+- `1.9.1` Snapshots can be deleted in bulk from the Snapshots page, by selecting a page or every snapshot matching the current filters, and the API gains single and bulk delete endpoints. Bulk deletes run on the queue worker, and the list shows queued snapshots as Deleting until they are gone ([#686](https://github.com/David-Crty/databasement/pull/686))
+- `1.9.1` The Helm chart can run any number of remote agents under `agents.<name>`, alongside the server or on their own with `app.enabled: false`, and the agent token dialog shows the environment variables plus Docker Compose, Helm and Docker snippets pinned to the server's minor version. The chart's Service now routes web traffic only to app pods, never to worker pods ([#685](https://github.com/David-Crty/databasement/pull/685))
+- `1.9.1` In demo mode, visitors can run restores and download and delete snapshots through a dedicated `demo` role. Their deletes are never carried out, so the demo data stays intact ([#687](https://github.com/David-Crty/databasement/pull/687))
+- `1.9.0` The Agents page shows each agent's version next to the server's, and the sidebar warns when an agent runs an older minor version or is too old to report one. Agents are compatible with any server of the same minor version, so upgrade agents whenever the server moves to a new minor ([#681](https://github.com/David-Crty/databasement/pull/681))
+- `1.9.0` Each backup configuration can list tables to leave out of its dumps by bare name, applied to every database the backup dumps, so log tables no longer need one `--ignore-table` flag per database in Extra Dump Flags. PostgreSQL exclusion needs `pg_dump` 16 or later (shipped in the Docker image), and agents older than 1.9.0 ignore the list and dump every table ([#554](https://github.com/David-Crty/databasement/pull/554))
+- `1.9.0` A pending or running backup or restore can be cancelled from the snapshot and restore lists or from its logs. The job stops within 30 seconds, is neither retried nor reported as failed, and the copies it already uploaded are deleted; a restore cancelled mid-way can leave the target database partially restored ([#674](https://github.com/David-Crty/databasement/pull/674))
+- `1.9.0` Command output from jobs run by a remote agent shows live in the job logs, as it already did for jobs on the app's own queue ([#672](https://github.com/David-Crty/databasement/pull/672))
+- `1.9.0` A backup whose remote agent goes silent for 10 minutes while a dump runs is retried, instead of waiting out the whole job timeout, and an agent whose job was taken away stops its dump. The job logs show the last heartbeat of a running command and warn once it is two minutes old. Agents older than 1.9.0 keep the previous behaviour ([#671](https://github.com/David-Crty/databasement/pull/671))
+
+### Changed
+
+- `1.9.2` Backups of MySQL, MariaDB, PostgreSQL, MongoDB, Redis/Valkey and Firebird stream the dump straight into the compressor, so only the archive lands on disk and large databases need about half the temporary space. SQLite and SQL Server keep writing the dump to a file first. Archives keep the same format, so restores and agents of any version are unaffected ([#689](https://github.com/David-Crty/databasement/pull/689))
+
+### Fixed
+
+- `1.9.3` Updating a database server through the API keeps every backup configuration whose `id` is sent back, instead of deleting it and creating a new one. An `id` belonging to another server is rejected and nothing is changed ([#692](https://github.com/David-Crty/databasement/pull/692))
+- `1.9.3` Snapshots left without a backup configuration by earlier API updates are linked back to their server's configuration when the server has exactly one, so retention applies to them again. Snapshots kept on purpose after removing a configuration from such a server are linked too, so the next cleanup may delete them ([#693](https://github.com/David-Crty/databasement/pull/693))
+- `1.9.3` The organization switcher shows as an icon when the sidebar is collapsed instead of being clipped, and clicking it expands the sidebar ([#691](https://github.com/David-Crty/databasement/pull/691))
+- `1.9.2` A backup or restore failed by the stuck-job recovery sends its failure notification and records the reason in its log, instead of failing in silence. A remote agent stopped by SIGTERM or SIGINT mid-job, as when its pod is evicted, says so in the job's log ([#688](https://github.com/David-Crty/databasement/pull/688))
+- `1.9.2` SQL Server and Firebird servers created or updated through the API keep their host, port and credentials, which were dropped on save, and Firebird database paths containing backslashes are accepted
+- `1.9.2` A manual backup run while an agent discovery is already in flight for it reports that the discovery is already running, instead of claiming a new one was dispatched
+- `1.9.2` A zero or negative `per_page` on an API listing returns a page of results instead of failing with a server error
+- `1.9.2` Database discovery run by a remote agent falls back to the database type's default port, instead of MySQL's 3306, when the server has none set
+
+- `1.9.1` A MySQL, MariaDB or PostgreSQL server can use a Unix socket path as its host again: the form had rejected the `/` since host validation was tightened, so socket-based PostgreSQL servers could no longer be saved. MySQL and MariaDB backups, restores and connection tests now connect through the socket ([#684](https://github.com/David-Crty/databasement/pull/684))
+- `1.9.0` A restore that times out while its remote agent is still running it now stops the agent at its next report, instead of letting it carry on and possibly revive the failed restore ([#673](https://github.com/David-Crty/databasement/pull/673))
+
+## [1.8] - 2026-10-01 {#v1-8}
+
+### Added
+
+- `1.8.1` Database servers behind a remote agent can be restored onto, so a staging database the app cannot reach directly can be refreshed from a snapshot. Restores from the UI, the API, the MCP server and scheduled restores are all handed to the server's agent, which must run 1.8.1 or later; an agent restore runs once and is failed rather than retried when its agent disappears or never claims it. Before this, API, MCP and scheduled restores onto such a server were queued on the app, which cannot reach it ([#633](https://github.com/David-Crty/databasement/pull/633))
+- `1.8.0` A scheduled restore that is disabled can still be run on demand: "Run now" asks for confirmation, runs the flow and leaves it paused, so a flow meant to run only manually no longer has to be enabled and disabled around every run. The button also reports the real outcome instead of always claiming success ([#626](https://github.com/David-Crty/databasement/pull/626))
+
+### Fixed
+
+- `1.8.4` Backups run by a remote agent whose dump takes longer than five minutes are no longer reset and handed out again mid-dump, which restarted them: the agent's claim on a backup now lasts as long as `backup.job_timeout`, as it already did for restores. A backup that times out stays failed even if its agent reports back late ([#651](https://github.com/David-Crty/databasement/pull/651))
+- `1.8.3` Custom-format PostgreSQL snapshots are restored one table at a time by default, so databases using extensions that bring their own tables and foreign keys (such as pgAgent) no longer fail to restore on foreign key errors. The restore dialog offers "Parallel restore (4 jobs)" for custom-format snapshots of large databases that do not use such extensions ([#642](https://github.com/David-Crty/databasement/pull/642))
+- `1.8.2` Restoring a PostgreSQL snapshot with an owner works on servers connected as their bootstrap superuser (usually `postgres`), where it failed on `REASSIGN OWNED`: the database is handed to the owner before the restore and the dump is restored as that owner. On managed servers (RDS, Azure, Cloud SQL) the connection user still needs membership in the owner role, and the error now names the missing `GRANT` ([#636](https://github.com/David-Crty/databasement/pull/636))
+- `1.8.1` Jobs run by remote agents are reported like jobs on the app's own queue: a backup completed by an agent sends the success notification, a backup or restore whose agent stops responding is failed with a notification, and a database discovery the agent cannot run records a failed snapshot and notifies instead of failing silently. A discovery whose pattern matches no database completes without backups rather than failing, and a manually triggered discovery is skipped while one is already running for the same backup ([#634](https://github.com/David-Crty/databasement/pull/634))
+- `1.8.0` MySQL 5.5 and 5.6 and MariaDB below 10.2 can be backed up: the image now ships Oracle's MySQL client alongside `mariadb-dump` and each server is dumped with the client its version needs, which also retires the 1.7.1 workaround that dropped stored routines from the dumps of MySQL 26.x servers. The dump command preview on the server form names the client the backup would really run ([#627](https://github.com/David-Crty/databasement/pull/627)) ([#628](https://github.com/David-Crty/databasement/pull/628))
+
+### Security
+
+- `1.8.2` **Breaking:** Google, GitHub and gitlab.com sign-in only logs in users who already exist, since these providers accept any account holder. To let one of them create accounts again, set `OAUTH_GOOGLE_AUTO_CREATE_USERS`, `OAUTH_GITHUB_AUTO_CREATE_USERS` or `OAUTH_GITLAB_AUTO_CREATE_USERS` to `true`, ideally after restricting access on the provider side; generic OIDC and self-hosted GitLab still follow `OAUTH_AUTO_CREATE_USERS` ([#641](https://github.com/David-Crty/databasement/pull/641))
+- `1.8.2` The v1 REST API and the `/mcp` endpoint accept only user tokens; agent tokens are limited to the agent endpoints ([#637](https://github.com/David-Crty/databasement/pull/637))
+- `1.8.2` Database names reach the dump and restore clients in a form they cannot mistake for one of their own options, and names starting with a dash are rejected by the backup form, the API, scheduled restores and the MCP restore tool ([#640](https://github.com/David-Crty/databasement/pull/640))
+- `1.8.2` Extra dump flags are checked against the denied options in their abbreviated and `--loose-` prefixed spellings too, which `mysqldump`, `mariadb-dump` and `pg_dump` all accept ([#639](https://github.com/David-Crty/databasement/pull/639))
+
+## [1.7] - 2026-09-18 {#v1-7}
+
+### Added
+
+- `1.7.15` The Snapshots page filters on flags through an "All Snapshots / File missing / Locked" dropdown, so locked snapshots can be found without scanning every row; links to `?fileMissing=1` in older notification emails still open the missing-file filter ([#618](https://github.com/David-Crty/databasement/pull/618))
+- `1.7.15` The interface is available in Simplified Chinese ([#538](https://github.com/David-Crty/databasement/pull/538))
 - `1.7.14` SSH tunnels have an optional compression setting, on the database server form and the SSH config API, which trades CPU for bandwidth when the tunnel runs over a slow link ([#543](https://github.com/David-Crty/databasement/pull/543))
 - `1.7.13` The French, Spanish, Greek and Traditional Chinese interfaces are fully translated and use consistent wording: about 38% of the strings fell back to English in each locale, and page titles, path validation messages and several flash messages could not be translated at all ([#602](https://github.com/David-Crty/databasement/pull/602)) ([#603](https://github.com/David-Crty/databasement/pull/603))
 - `1.7.12` The v1 REST API is rate limited, 300 requests a minute per access token by default; `API_RATE_LIMIT` raises or lowers the ceiling and `0` turns it off where a gateway already throttles. The agent daemon routes and the web interface are not affected ([#524](https://github.com/David-Crty/databasement/pull/524))
@@ -100,6 +220,7 @@ are inherited from Databasement and keep their original upstream pull request li
 
 ### Fixed
 
+- `1.7.15` The Previous and Next pagination buttons show their label instead of the raw `pagination.previous` and `pagination.next` keys ([#619](https://github.com/David-Crty/databasement/pull/619))
 - `1.7.12` The `latest` Docker image is published from the release tag only, so it can no longer be overwritten by a concurrent build of `main` that carries no version number, which blanked the version badge and the update dialog. The tip of `main` is published as `edge` ([#601](https://github.com/David-Crty/databasement/pull/601))
 - `1.7.10` A form that fails validation raises a toast, expands the collapsed section holding the first invalid field and scrolls it into view with focus; the connection test buttons validate the same way ([#598](https://github.com/David-Crty/databasement/pull/598))
 - `1.7.9` A command log no longer shows a running spinner forever when the job dies before the command finishes (queue timeout, killed worker, fatal error); it is marked failed together with the job ([#541](https://github.com/David-Crty/databasement/pull/541))
@@ -334,7 +455,10 @@ are inherited from Databasement and keep their original upstream pull request li
 - `1.0.5` An empty `TRUSTED_PROXIES` value falls back to the default private network ranges instead of trusting no proxy at all, which broke fresh Kubernetes installs ([#184](https://github.com/David-Crty/databasement/pull/184))
 - `1.0.2` SQLite backups no longer miss recent writes on databases in WAL mode: the SQLite client's online backup is used instead of copying the file, remote SQLite over SFTP also fetches the `-wal` and `-shm` companion files (flagged best-effort when present), and a missing source file fails the backup instead of producing an empty one ([#174](https://github.com/David-Crty/databasement/pull/174))
 
-[1.7]: https://github.com/David-Crty/databasement/compare/v1.6.12...v1.7.14
+[1.10]: https://github.com/hjdyzy/datacask/releases/tag/v1.10.12-dc.17
+[1.9]: https://github.com/David-Crty/databasement/compare/v1.8.4...v1.9.3
+[1.8]: https://github.com/David-Crty/databasement/compare/v1.7.15...v1.8.4
+[1.7]: https://github.com/David-Crty/databasement/compare/v1.6.12...v1.7.15
 [1.6]: https://github.com/David-Crty/databasement/compare/v1.5.6...v1.6.12
 [1.5]: https://github.com/David-Crty/databasement/compare/v1.4.2...v1.5.6
 [1.4]: https://github.com/David-Crty/databasement/compare/v1.3.1...v1.4.2

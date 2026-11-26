@@ -67,6 +67,24 @@ Admins (org or super) can add users from the **Users > Add User** page:
 - Org admins cannot act on super admin users
 - The last super admin cannot be deleted
 
+### Bulk user management
+
+Choose 15, 30, 50, or 100 users per page. The table checkbox selects the current page
+and keeps selections from other pages. After selecting users, choose **Select all matching users**
+to include every user matching the current filters in the active organization. Changing a filter
+clears the selection. Each batch can process up to 200 users.
+
+Use the selection toolbar to assign a role or copy pending invitation links. **More actions**
+contains **Remove from organization** and **Delete**. The confirmation shows the number of
+selected users. The result groups successes, skips, and failures and lists the reasons for
+skipped or failed users.
+
+To create multiple pending accounts, go to **Users > Add User > Bulk invite users**. Choose an
+organization role and upload a UTF-8 CSV file or paste the CSV content. Each record contains
+the user's name and email, in that order. The `name,email` header is optional. A batch can
+contain up to 200 users and 128 KB. Previously registered emails are skipped. Copy the
+generated invitation links from the results and share each link with its intended user.
+
 ## API Usage
 
 API requests target an organization using the `?org_id=` query parameter (by organization ID):
