@@ -2507,6 +2507,7 @@ are inherited from Databasement and keep their original upstream pull request li
 
 ### Fixed
 
+- `1.10.12-dc.18` Agent backups and restores that exceed the configured timeout plus the recovery grace period now fail even while their lease is still valid. Late heartbeats and completion reports are rejected
 - `1.10.12` GFS retention keeps the right snapshot for each month in its monthly tier when it runs at the end of a month, instead of skipping a shorter month, such as September on October 31, and deleting its snapshot ([#780](https://github.com/David-Crty/databasement/pull/780))
 - `1.10.12` A local SQLite restore keeps the existing database file's permissions instead of resetting them to 0640, so an application relying on group write access keeps it. A failed copy no longer leaves a partial new file behind ([#785](https://github.com/David-Crty/databasement/pull/785))
 - `1.10.12` SQLite backups over SFTP no longer fail when the WAL or SHM file is empty, as it is after an automatic checkpoint. An empty main database file still fails the backup ([#765](https://github.com/David-Crty/databasement/pull/765))
@@ -2859,7 +2860,7 @@ are inherited from Databasement and keep their original upstream pull request li
 - `1.0.5` An empty `TRUSTED_PROXIES` value falls back to the default private network ranges instead of trusting no proxy at all, which broke fresh Kubernetes installs ([#184](https://github.com/David-Crty/databasement/pull/184))
 - `1.0.2` SQLite backups no longer miss recent writes on databases in WAL mode: the SQLite client's online backup is used instead of copying the file, remote SQLite over SFTP also fetches the `-wal` and `-shm` companion files (flagged best-effort when present), and a missing source file fails the backup instead of producing an empty one ([#174](https://github.com/David-Crty/databasement/pull/174))
 
-[1.10]: https://github.com/hjdyzy/datacask/releases/tag/v1.10.12-dc.17
+[1.10]: https://github.com/hjdyzy/datacask/releases/tag/v1.10.12-dc.18
 [1.9]: https://github.com/David-Crty/databasement/compare/v1.8.4...v1.9.3
 [1.8]: https://github.com/David-Crty/databasement/compare/v1.7.15...v1.8.4
 [1.7]: https://github.com/David-Crty/databasement/compare/v1.6.12...v1.7.15
