@@ -32,7 +32,7 @@ test('markFailed leaves already-finalized command logs untouched', function () {
     expect($job->getLogs()[$index]['status'])->toBe('completed');
 });
 
-test('markRunning clears stale terminal metadata', function () {
+test('claimForExecution clears stale terminal metadata', function () {
     $job = BackupJob::create([
         'status' => 'running',
         'started_at' => now()->subHour(),
@@ -42,7 +42,7 @@ test('markRunning clears stale terminal metadata', function () {
         'error_trace' => 'previous trace',
     ]);
 
-    expect($job->markRunning('queue-123'))->toBeTrue();
+    expect($job->claimForExecution('queue-123'))->toBeTrue();
 
     $job->refresh();
     expect($job->status->value)->toBe('running')

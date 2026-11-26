@@ -9,6 +9,7 @@ use App\Models\DatabaseServer;
 use App\Models\NotificationChannel;
 use App\Models\Snapshot;
 use App\Notifications\BackupFailedNotification;
+use App\Support\QueueTimeouts;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Testing\TestResponse;
 
@@ -216,7 +217,9 @@ describe('recovery', function () {
         $agent = Agent::factory()->create();
         $agentJob = $type === 'restore' ? dispatchAgentRestore($agent)['agentJob'] : pendingBackupFor($agent);
         claimNextJob($agent)->assertJsonPath('job.id', $agentJob->id);
-        $agentJob->trackedJob()->update(['started_at' => now()->subSeconds(3600 + 300 + 1)]);
+        $claimedAt = now()->subSeconds(QueueTimeouts::retryAfter() + 1);
+        $agentJob->update(['claimed_at' => $claimedAt]);
+        $agentJob->trackedJob()->update(['started_at' => $claimedAt]);
 
         $this->artisan('jobs:recover-stuck')->assertSuccessful();
 
@@ -225,6 +228,7 @@ describe('recovery', function () {
         $this->withToken($token)->postJson("/api/v1/agent/jobs/{$agentJob->id}/ack", ['filename' => 'backup.sql.gz', 'file_size' => 1])->assertConflict();
 
         expect($agentJob->fresh()->status)->toBe(AgentJob::STATUS_FAILED)
+            ->and($agentJob->fresh()->error_message)->toContain('timed out')
             ->and($agentJob->trackedJob()->fresh()->status)->toBe(BackupJobStatus::Failed);
     })->with(['backup', 'restore']);
 

@@ -82,7 +82,10 @@ test('retry refuses a database removed from its backup rule and a disabled serve
     expect(Snapshot::count())->toBe(1);
 
     $server->update(['backups_enabled' => false]);
-    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertForbidden();
+    $response = Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertOk();
+    expect(collect($response->effects['xjs'] ?? [])->pluck('expression')->implode("\n"))
+        ->toContain(__('This failed backup cannot be retried.'))
+        ->and(Snapshot::count())->toBe(1);
     Queue::assertNothingPushed();
 });
 
@@ -115,6 +118,7 @@ test('preflight failures cannot be retried as database backups', function () {
 });
 
 test('cannot retry a failed snapshot from another organization', function () {
+    Queue::fake();
     $otherOrg = \App\Models\Organization::factory()->create();
     $server = DatabaseServer::factory()->create([
         'organization_id' => $otherOrg->id,
@@ -122,8 +126,10 @@ test('cannot retry a failed snapshot from another organization', function () {
     ]);
     $source = Snapshot::factory()->forServer($server)->failed()->create();
 
-    expect(fn () => Livewire::test(Index::class)->call('retryFailedBackup', $source->id))
-        ->toThrow(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+    Livewire::test(Index::class)->call('retryFailedBackup', $source->id)->assertNotFound();
+
+    expect(Snapshot::withoutGlobalScopes()->where('database_server_id', $server->id)->count())->toBe(1);
+    Queue::assertNothingPushed();
 });
 
 test('shows pending and running snapshot rows as in-progress', function () {

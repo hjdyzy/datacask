@@ -119,7 +119,7 @@ test('dump adds no ignore-table flags when excluded tables are absent or empty',
  * $mysqlClient says whether the image ships Oracle's client, which only the
  * Docker image does.
  */
-function mysqlDatabaseReportingVersion(?string $version, bool $mysqlClient = true, array $extraConfig = []): MysqlDatabase
+function mysqlDatabaseReportingVersion(?string $version, bool $mysqlClient = true, array $extraConfig = [], bool $legacyDump = false): MysqlDatabase
 {
     $pdo = Mockery::mock(PDO::class);
 
@@ -134,6 +134,7 @@ function mysqlDatabaseReportingVersion(?string $version, bool $mysqlClient = tru
     $db = Mockery::mock(MysqlDatabase::class)->makePartial()->shouldAllowMockingProtectedMethods();
     $db->shouldReceive('createPdo')->andReturn($pdo);
     $db->shouldReceive('mysqlClientAvailable')->andReturn($mysqlClient);
+    $db->shouldReceive('legacyDumpAvailable')->andReturn($legacyDump);
     $db->setConfig([
         'host' => 'db.local',
         'port' => 3306,
@@ -148,7 +149,7 @@ function mysqlDatabaseReportingVersion(?string $version, bool $mysqlClient = tru
 }
 
 test('dump uses the MySQL 5.6-compatible client for legacy MySQL servers', function () {
-    $result = mysqlDatabaseReportingVersion('5.6.51-log')->dump('/tmp/dump.sql');
+    $result = mysqlDatabaseReportingVersion('5.6.51-log', legacyDump: true)->dump('/tmp/dump.sql');
 
     expect($result->command)->toStartWith('mariadb-dump-10.6 --single-transaction --routines')
         ->and($result->command)->not->toStartWith('mariadb-dump --');
@@ -178,6 +179,7 @@ test("dump uses Oracle's client for the servers the MariaDB one cannot read", fu
         ->and($result->command)->not->toContain('--skip_ssl')
         ->and($result->log)->toBeNull();
 })->with([
+    'MySQL 5.6 without the legacy client' => ['5.6.51-log'],
     // mariadb-dump reads MySQL's YY.M version as a MariaDB one (#494), and on
     // 5.5 it asks information_schema for a column that arrived in 5.7 (#617).
     'MySQL 5.5' => ['5.5.62-0ubuntu0.14.04.1'],

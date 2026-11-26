@@ -87,16 +87,17 @@ describe('agent creation', function () {
             ->set('form.name', 'My Agent')
             ->call('save');
 
-        expect($component->get('dockerCommand'))->toContain("davidcrty/databasement:{$imageTag}")
-            ->and($component->get('dockerComposeConfig'))->toContain("davidcrty/databasement:{$imageTag}")
+        $image = "registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:{$imageTag}";
+        expect($component->get('dockerCommand'))->toContain($image)
+            ->and($component->get('dockerComposeConfig'))->toContain($image)
             ->and($component->get('helmCommand'))->toContain($component->get('newToken'));
 
         $chartFlag === ''
             ? expect($component->get('helmCommand'))->not->toContain('--version')
             : expect($component->get('helmCommand'))->toContain($chartFlag);
     })->with([
-        'release' => ['v1.9.2', '1.9', '--version 1.9.2'],
-        'untagged build' => [null, '1', ''],
+        'release' => ['v1.10.12-dc.17', '1.10.12-dc.17', '--version 1.10.12-dc.17'],
+        'untagged build' => [null, 'latest', ''],
     ]);
 
     test('without manage-agents cannot open the create screen', function () {

@@ -15,6 +15,7 @@ use App\Support\QueueTimeouts;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use RuntimeException;
@@ -34,15 +35,42 @@ class RecoverStuckJobsCommand extends Command
 
     public function handle(): int
     {
+        $agentTimeoutResult = $this->failTimedOutAgentJobs();
         $agentResult = $this->recoverAgentJobs();
         $backupResult = $this->recoverBackupJobs();
         $cleanupResult = $this->failUnclaimedCleanupJobs();
 
-        if (! $agentResult && ! $backupResult && ! $cleanupResult) {
+        if (! $agentTimeoutResult && ! $agentResult && ! $backupResult && ! $cleanupResult) {
             $this->info('No stuck jobs found.');
         }
 
         return self::SUCCESS;
+    }
+
+    private function failTimedOutAgentJobs(): bool
+    {
+        $timedOut = AgentJob::query()
+            ->whereIn('type', [AgentJobType::Backup, AgentJobType::Restore])
+            ->whereIn('status', [AgentJob::STATUS_CLAIMED, AgentJob::STATUS_RUNNING])
+            ->where('claimed_at', '<', now()->subSeconds(QueueTimeouts::retryAfter()));
+
+        $failedCount = 0;
+        foreach ($timedOut->pluck('id') as $id) {
+            $failedCount += (int) DB::transaction(function () use ($timedOut, $id): bool {
+                $job = (clone $timedOut)->whereKey($id)->lockForUpdate()->first();
+                if ($job === null) {
+                    return false;
+                }
+
+                return FailAgentJobAction::run($job, ucfirst($job->type->value).' timed out.');
+            });
+        }
+
+        if ($failedCount > 0) {
+            $this->info("Agent jobs: failed {$failedCount} timed-out job(s).");
+        }
+
+        return $failedCount > 0;
     }
 
     /**
