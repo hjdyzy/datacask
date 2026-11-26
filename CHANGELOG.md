@@ -9,6 +9,14 @@ that shipped it. Releases before 1.0.0 are only listed on
 [GitHub Releases](https://github.com/hjdyzy/datacask/releases). Entries through 1.7.14
 are inherited from Databasement and keep their original upstream pull request links.
 
+## 1.10.12 - 2026-11-26
+
+- Consolidates the Datacask patch series on Databasement 1.10.12, including exact database exclusions, one-off backups, single-database retries, and MySQL 5.6 dump compatibility.
+- Includes database health monitoring, WeCom and PushPlus notifications, bulk user management, CSV invitations, and scoped API tokens.
+- Includes the queue and Agent timeout recovery fixes, Google Drive storage, credential rotation, and snapshot comment search.
+
+[Release notes](https://github.com/hjdyzy/datacask/releases/tag/v1.10.12)
+
 ## [1.7.14-dc.15] - 2026-09-30
 
 ### Added
