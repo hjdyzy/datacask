@@ -21,6 +21,10 @@ on:
       - '.github/workflows/tests.yml'
   workflow_dispatch:
     inputs:
+      image_version_to_tag:
+        description: Add a v-prefixed GHCR tag to an existing stable image (for example, 1.10.12)
+        required: false
+        type: string
       rebuild_base_image:
         description: Rebuild the runtime image even when its build context is unchanged
         required: false
@@ -37,7 +41,47 @@ env:
   NODE_IMAGE: registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:base-node-22-slim-83f487e
 
 jobs:
+  tag-existing-image:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.image_version_to_tag != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add version tag to existing manifest
+        shell: bash
+        env:
+          VERSION: ${{ inputs.image_version_to_tag }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/datacask
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Enter an existing stable version such as 1.10.12"
+            exit 1
+          fi
+          digest=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE:$VERSION")
+          if existing_digest=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE:v$VERSION" 2>/dev/null); then
+            if [[ "$existing_digest" != "$digest" ]]; then
+              echo "::error::The version tag already points to another manifest"
+              exit 1
+            fi
+          else
+            docker buildx imagetools create --tag "$IMAGE:v$VERSION" "$IMAGE@$digest"
+          fi
+          tagged_digest=$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$IMAGE:v$VERSION")
+          test "$digest" = "$tagged_digest"
+
   build-base-image:
+    if: ${{ !inputs.image_version_to_tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -165,6 +209,7 @@ jobs:
             ${{ env.ALIYUN_REGISTRY }}/${{ env.ALIYUN_NAMESPACE }}/datacask
           tags: |
             type=semver,pattern={{version}}
+            type=semver,pattern=v{{version}},priority=850,enable=${{ !contains(github.ref_name, '-') }}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}

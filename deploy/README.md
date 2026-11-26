@@ -36,18 +36,19 @@ test -f .env || cp .env.example .env
 chmod 600 .env
 ```
 
-将 `DATACASK_SOURCE_REF` 设置为计划部署的 Datacask 发布标签。使用固定版本时，在 `.env` 中将 `DATACASK_IMAGE` 设为同一版本的镜像标签（去掉开头的 `v`）。
+将 `DATACASK_SOURCE_REF` 设置为计划部署的 Datacask 发布标签。部署 `v1.10.12` 时，在 `.env` 中使用下方固定镜像地址。
 
 生成应用密钥：
 
 ```bash
-docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.10.12 \
+docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:v1.10.12 \
     php artisan key:generate --show
 ```
 
 将生成的密钥完整写入 `.env`，并将示例 IP 替换为服务器的真实内网 IP：
 
 ```dotenv
+DATACASK_IMAGE=registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:v1.10.12
 DATACASK_BIND_ADDRESS=0.0.0.0
 DATACASK_HTTP_PORT=2226
 APP_URL=http://192.168.2.2:2226

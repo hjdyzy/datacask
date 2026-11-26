@@ -44,7 +44,7 @@ Datacask 不提供 binlog 增量备份、时间点恢复或主从复制管理；
 使用以下固定版本镜像部署 Datacask 1.10.12：
 
 ```text
-registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.10.12
+registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:v1.10.12
 ```
 
 完整安装、升级和回滚步骤见 [生产部署指南](deploy/README.md)。
