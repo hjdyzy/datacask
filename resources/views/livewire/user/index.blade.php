@@ -18,7 +18,69 @@
 
     <!-- TABLE -->
     <x-card shadow>
-        <x-table :headers="$headers" :rows="$users" :sort-by="$sortBy" with-pagination>
+        @if($selected !== [])
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-lg border border-base-content/10 bg-base-200/60 px-3 py-2 sm:px-4">
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-2 text-sm font-semibold" aria-live="polite">
+                        <x-icon name="o-check-circle" class="size-4 text-primary" />
+                        {{ __('Selected users: :count', ['count' => count($selected)]) }}
+                    </span>
+                    <x-button :label="__('Clear selection')" wire:click="clearSelection" spinner class="btn-ghost btn-sm font-normal text-base-content/70" />
+                    @if($users->hasPages() && count($selected) < $users->total())
+                        <x-button :label="__('Select all :count matching users', ['count' => $users->total()])" wire:click="selectAllMatching" spinner class="btn-ghost btn-sm text-primary" />
+                    @endif
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <x-button :label="__('Change role')" icon="o-user-group" wire:click="openBulkAction('role')" spinner class="btn-primary btn-sm" />
+                    <x-button :label="__('Copy invitation links')" icon="o-link" wire:click="openBulkAction('invite')" spinner class="btn-outline btn-sm" />
+                    <x-floating-dropdown right>
+                        <x-slot:trigger>
+                            <x-button
+                                :label="__('More actions')"
+                                icon="o-ellipsis-horizontal"
+                                class="btn-ghost btn-sm"
+                                x-bind:aria-expanded="open"
+                            />
+                        </x-slot:trigger>
+                        <x-menu-item :title="__('Remove from organization')" icon="o-user-minus" wire:click="openBulkAction('remove')" spinner />
+                        <x-menu-item :title="__('Delete')" icon="o-trash" wire:click="openBulkAction('delete')" spinner class="text-error" />
+                    </x-floating-dropdown>
+                </div>
+            </div>
+        @endif
+        @error('selected')
+            <p role="alert" class="mb-3 text-sm text-error">{{ $message }}</p>
+        @enderror
+        <x-table
+            :headers="$headers"
+            :rows="$users"
+            :sort-by="$sortBy"
+            with-pagination
+        >
+            @scope('header_selection', $header, $users, $selected)
+                @php($pageSelected = $users->isNotEmpty() && array_diff($users->getCollection()->modelKeys(), $selected) === [])
+                <input
+                    type="checkbox"
+                    class="checkbox checkbox-sm"
+                    aria-label="{{ __('Select users on this page') }}"
+                    wire:key="user-page-selection-{{ $users->currentPage() }}-{{ $pageSelected ? 'checked' : 'unchecked' }}"
+                    wire:click="togglePageSelection"
+                    @disabled($users->isEmpty())
+                    @checked($pageSelected)
+                />
+            @endscope
+
+            @scope('cell_selection', $user, $selected)
+                <input
+                    type="checkbox"
+                    class="checkbox checkbox-sm"
+                    aria-label="{{ __('Select :name', ['name' => $user->name]) }}"
+                    wire:key="user-selection-{{ $user->id }}"
+                    wire:click="toggleUserSelection({{ $user->id }})"
+                    @checked(in_array($user->id, $selected, true))
+                />
+            @endscope
+
             <x-slot:empty>
                 <div class="text-center text-base-content/50 py-8">
                     @if($this->hasFilters)
@@ -107,7 +169,17 @@
                 </div>
             @endscope
         </x-table>
+        <label class="mt-3 flex w-fit items-center gap-2 text-sm text-base-content/75">
+            {{ __('Users per page') }}
+            <select wire:model.live="perPage" class="select select-sm w-auto">
+                @foreach($pageSizes as $size)
+                    <option value="{{ $size }}">{{ $size }}</option>
+                @endforeach
+            </select>
+        </label>
     </x-card>
+
+    @include('livewire.user._bulk-actions')
 
     <!-- DELETE CONFIRMATION MODAL -->
     <x-confirm-modal

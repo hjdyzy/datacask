@@ -3,6 +3,8 @@
 namespace App\Livewire\User;
 
 use App\Actions\Role\AssignRoleToUserAction;
+use App\Actions\User\ImportUserInvitations;
+use App\Actions\User\InviteUser;
 use App\Models\Organization;
 use App\Models\Scopes\OrganizationScope;
 use App\Models\User;
@@ -13,15 +15,19 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 use Silber\Bouncer\Database\Role;
 
 #[Title('Add User')]
 class Create extends Component
 {
-    use AuthorizesRequests, SurfacesValidationErrors, Toast;
+    use AuthorizesRequests, SurfacesValidationErrors, Toast, WithFileUploads;
 
     public Form $form;
 
@@ -35,9 +41,25 @@ class Create extends Component
 
     public string $invitationUrl = '';
 
+    public string $batchRole = '';
+
+    public string $batchCsv = '';
+
+    public ?TemporaryUploadedFile $batchFile = null;
+
+    #[Locked]
+    public string $batchOrganizationId = '';
+
+    public bool $showBulkResults = false;
+
+    /** @var list<array{id: int, email: ?string, message: ?string, link: ?string, failed: bool}> */
+    #[Locked]
+    public array $bulkResults = [];
+
     public function mount(): void
     {
         $this->authorize('create', User::class);
+        $this->batchOrganizationId = app(CurrentOrganization::class)->id();
     }
 
     public function save(): void
@@ -48,6 +70,37 @@ class Create extends Component
 
         $this->invitationUrl = $user->getInvitationUrl();
         $this->showCopyModal = true;
+    }
+
+    public function importInvitations(ImportUserInvitations $import, InviteUser $invite): void
+    {
+        $this->authorize('create', User::class);
+        $organization = app(CurrentOrganization::class)->model();
+        abort_unless($this->batchOrganizationId === $organization->id, 403);
+
+        $this->validate([
+            'batchRole' => ['required', Rule::in(array_column($this->form->roleOptions(), 'id'))],
+            'batchCsv' => ['required_without:batchFile', 'string', 'max:'.(ImportUserInvitations::MAX_FILE_KB * 1024)],
+            'batchFile' => ['nullable', 'file', 'extensions:csv', 'max:'.ImportUserInvitations::MAX_FILE_KB],
+        ], attributes: [
+            'batchRole' => __('Role'),
+            'batchCsv' => __('CSV content'),
+            'batchFile' => __('CSV file'),
+        ]);
+
+        $csv = $this->batchFile?->get() ?? $this->batchCsv;
+        if ($csv === false) {
+            throw ValidationException::withMessages(['batchFile' => __('Could not read the uploaded CSV file.')]);
+        }
+
+        $this->bulkResults = $import->run($organization, $csv, $this->batchRole, $invite);
+        $this->reset('batchCsv', 'batchFile');
+        $this->showBulkResults = true;
+    }
+
+    public function closeBulkResults(): void
+    {
+        $this->reset('showBulkResults', 'bulkResults');
     }
 
     public function addExisting(CurrentOrganization $currentOrg): void

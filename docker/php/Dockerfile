@@ -1,14 +1,18 @@
 ARG RUNTIME_IMAGE=ghcr.io/david-crty/databasement-php@sha256:ea6f8191e04895cc866c7d483ea35d0471e953ef0a15629fe9e59df7783ccdc7
 
+FROM ${RUNTIME_IMAGE} AS runtime
+
 # Extract the Alpine 3.17 MariaDB 10.6 client for MySQL servers below 5.7.
 FROM --platform=$BUILDPLATFORM ${RUNTIME_IMAGE} AS mysql56-client
 ARG TARGETARCH
+# Alpine repository indexes are signed by architecture-specific keys.
+COPY --from=runtime /etc/apk/keys/ /tmp/target-apk-keys/
 RUN case "${TARGETARCH}" in \
         amd64) MUSL_ARCH=x86_64 ;; \
         arm64) MUSL_ARCH=aarch64 ;; \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
-    && apk --root /tmp/legacy --arch "${MUSL_ARCH}" --keys-dir /etc/apk/keys \
+    && apk --root /tmp/legacy --arch "${MUSL_ARCH}" --keys-dir /tmp/target-apk-keys \
         --repositories-file /dev/null --repository https://dl-cdn.alpinelinux.org/alpine/v3.17/main \
         --no-cache --no-scripts add --initdb mariadb-client \
     && mkdir -p /opt/mysql56-client/bin /opt/mysql56-client/share /opt/mysql56-client/lib \
@@ -19,7 +23,7 @@ RUN case "${TARGETARCH}" in \
     && printf '%s\n' '#!/bin/sh' 'exec /opt/mysql56-client/lib/ld-musl.so.1 --library-path /opt/mysql56-client/lib /opt/mysql56-client/bin/mariadb-dump-10.6 --character-sets-dir=/opt/mysql56-client/share/mariadb/charsets "$@"' > /opt/mysql56-client/bin/mariadb-dump-10.6-wrapper \
     && chmod 755 /opt/mysql56-client/bin/mariadb-dump-10.6-wrapper
 
-FROM ${RUNTIME_IMAGE}
+FROM runtime
 
 COPY --from=mysql56-client /opt/mysql56-client /opt/mysql56-client
 RUN ln -s /opt/mysql56-client/bin/mariadb-dump-10.6-wrapper /usr/local/bin/mariadb-dump-10.6 \

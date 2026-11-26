@@ -4,6 +4,7 @@ namespace App\Livewire\User;
 
 use App\Actions\Role\AssignRoleToUserAction;
 use App\Actions\Role\SyncUserAbilitiesAction;
+use App\Actions\User\InviteUser;
 use App\Enums\Ability;
 use App\Models\Organization;
 use App\Models\User;
@@ -61,21 +62,14 @@ class Form extends \Livewire\Form
             'abilities.*' => Rule::in(Ability::names()),
         ]);
 
-        $user = User::create([
-            'name' => $this->name,
-            'email' => $this->email,
-            'password' => null,
-            'super_admin' => auth()->user()->isSuperAdmin() ? $this->superAdmin : false,
-        ]);
-
-        $currentOrg = app(CurrentOrganization::class);
-        $user->organizations()->attach($currentOrg->id());
-        AssignRoleToUserAction::run($user, $this->role, $currentOrg->model());
-        $this->syncAbilities($user, $currentOrg->model());
-
-        $user->generateInvitationToken();
-
-        return $user;
+        return app(InviteUser::class)->run(
+            app(CurrentOrganization::class)->model(),
+            $this->name,
+            $this->email,
+            $this->role,
+            auth()->user()->isSuperAdmin() && $this->superAdmin,
+            $this->editableAbilities(),
+        );
     }
 
     public function update(): bool
@@ -125,13 +119,18 @@ class Form extends \Livewire\Form
      */
     private function syncAbilities(User $user, Organization $organization): void
     {
-        if (! auth()->user()?->can(Ability::ManageUsers->value)) {
-            return;
+        $abilities = $this->editableAbilities();
+        if ($abilities !== null) {
+            SyncUserAbilitiesAction::run($user, $abilities, $organization);
         }
+    }
 
-        $abilities = array_values(array_intersect($this->abilities, Ability::names()));
-
-        SyncUserAbilitiesAction::run($user, $abilities, $organization);
+    /** @return list<string>|null */
+    private function editableAbilities(): ?array
+    {
+        return auth()->user()?->can(Ability::ManageUsers->value)
+            ? array_values(array_intersect($this->abilities, Ability::names()))
+            : null;
     }
 
     /**

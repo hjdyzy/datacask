@@ -24,7 +24,7 @@ cd /opt/datacask
 
 ```bash
 set -euo pipefail
-DATACASK_SOURCE_REF=v1.7.14-dc.15
+DATACASK_SOURCE_REF=v1.10.12-dc.17
 DATACASK_RAW_URL="https://raw.githubusercontent.com/hjdyzy/datacask/${DATACASK_SOURCE_REF}/deploy"
 
 curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
@@ -117,7 +117,7 @@ curl -fsS http://127.0.0.1:2226/health
 将 `.env` 中的 `DATACASK_IMAGE` 改为上一个已验证版本，例如：
 
 ```dotenv
-DATACASK_IMAGE=registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.1
+DATACASK_IMAGE=registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:1.7.14-dc.15
 ```
 
 重新创建容器：

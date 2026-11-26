@@ -66,10 +66,12 @@ are inherited from Databasement and keep their original upstream pull request li
 
 - Product, documentation, release, container image, and Helm links now use Datacask resources.
 
-## [1.10] - 2026-11-17
+## [1.10] - 2026-11-26
 
 ### Added
 
+- `1.10.12-dc.17` Organization administrators can select users across pages, include all matches, and process up to 200 users per batch. Bulk actions cover role changes, invitation links, organization removal, and deletion
+- `1.10.12-dc.17` The Add User page accepts uploaded or pasted CSV lists to create pending accounts with a shared organization role. Results include invitation links and reasons for skipped or failed rows
 - `1.10.12` Google Drive can be used as a backup volume, with OAuth credentials (client ID, client secret and refresh token) and an optional target folder ([#761](https://github.com/David-Crty/databasement/pull/761))
 - `1.10.12` The credentials of a volume that holds snapshots can be updated, so a rotated key or a revoked Google Drive token no longer strands its snapshots. The location stays locked, and new credentials are only saved if a connection test with them succeeds ([#786](https://github.com/David-Crty/databasement/pull/786))
 - `1.10.12` `php artisan key:reencrypt` re-encrypts every stored credential with the current `APP_KEY`, finishing a key rotation, and `--check` confirms that `APP_PREVIOUS_KEYS` can be dropped. The docs describe the full rotation procedure, including keeping encrypted backups readable ([#757](https://github.com/David-Crty/databasement/pull/757))
@@ -447,7 +449,7 @@ are inherited from Databasement and keep their original upstream pull request li
 - `1.0.5` An empty `TRUSTED_PROXIES` value falls back to the default private network ranges instead of trusting no proxy at all, which broke fresh Kubernetes installs ([#184](https://github.com/David-Crty/databasement/pull/184))
 - `1.0.2` SQLite backups no longer miss recent writes on databases in WAL mode: the SQLite client's online backup is used instead of copying the file, remote SQLite over SFTP also fetches the `-wal` and `-shm` companion files (flagged best-effort when present), and a missing source file fails the backup instead of producing an empty one ([#174](https://github.com/David-Crty/databasement/pull/174))
 
-[1.10]: https://github.com/David-Crty/databasement/compare/v1.9.3...v1.10.12
+[1.10]: https://github.com/hjdyzy/datacask/releases/tag/v1.10.12-dc.17
 [1.9]: https://github.com/David-Crty/databasement/compare/v1.8.4...v1.9.3
 [1.8]: https://github.com/David-Crty/databasement/compare/v1.7.15...v1.8.4
 [1.7]: https://github.com/David-Crty/databasement/compare/v1.6.12...v1.7.15

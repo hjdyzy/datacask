@@ -18,6 +18,7 @@ Datacask 统一管理数据库实例、备份计划、备份文件和恢复任�
 - 支持恢复到原实例或兼容的其他实例。
 - 支持本地磁盘、MinIO/S3、Azure Blob、Google Drive、Samba、SFTP 和 FTP。
 - 支持组织、成员和权限管理，以及 SSH 隧道连接。
+- 支持[用户批量管理](docs/docs/user-guide/organizations.md#bulk-user-management)，包括跨页选择、批量修改角色和 CSV 批量邀请。
 - 默认提供简体中文界面，并支持多语言切换。
 
 ## 与上游 Databasement 的区别
