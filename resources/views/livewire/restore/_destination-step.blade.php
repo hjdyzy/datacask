@@ -18,16 +18,21 @@
           dumped with ownership/privilege information, so the restore sets the
           owners of the objects itself and the post-restore option narrows to
           the database's own owner (which no dump carries)
+      $snapshotIsCustomFormat (bool, optional) - whether the snapshot is a
+          pg_dump custom-format archive, the only kind pg_restore can restore in
+          parallel; unknown (null) for scheduled restores, which pick the
+          snapshot at run time, so the option is offered
 --}}
 @php
     $type = $this->targetServer?->database_type;
     $isSqlite = $type === DatabaseType::SQLITE;
     $preservesPrivileges = $snapshotPreservesPrivileges ?? false;
+    $offersParallelRestore = $type === DatabaseType::POSTGRESQL && ($snapshotIsCustomFormat ?? true);
 @endphp
 
 @unless($targetLocked)
     <x-select
-        :label="__('Target server')"
+        :label="__('Target Server')"
         wire:model.live="targetServerId"
         :options="$this->targetServerOptions"
         :placeholder="__('Select a target server')"
@@ -54,8 +59,8 @@
         <x-input
             wire:model.live.debounce.300ms="ownerUser"
             :label="$preservesPrivileges
-                ? __('Set database owner after restore')
-                : __('Transfer database ownership to user after restore')"
+                ? __('Set database owner before restore')
+                : __('Transfer database ownership to user before restore')"
             :placeholder="__('PostgreSQL username (leave empty to skip)')"
         />
 
@@ -65,14 +70,13 @@
             $ownershipStatements = $owner === '' ? [] : PostgresqlDatabase::ownershipStatements(
                 $schemaName,
                 $owner,
-                (string) $this->targetServer?->username,
                 $preservesPrivileges,
             );
         @endphp
 
         @if($ownershipStatements)
             <div class="fieldset-label mt-1 block text-xs">
-                {{ __('This SQL will be run after the restore:') }}
+                {{ __('This SQL will be run before the restore:') }}
                 <pre class="bg-base-200 rounded-box mt-1 overflow-x-auto p-3"><code class="select-all">{{ implode(PHP_EOL, $ownershipStatements) }}</code></pre>
             </div>
         @endif
@@ -90,6 +94,14 @@
             wire:model="forceDatabase"
             :label="__('Drop and recreate database before restore')"
             :hint="__('Not usually needed — dumps already include per-table DROP/CREATE statements. Use this only if you need a completely clean database (e.g. to remove tables not in the snapshot).')"
+        />
+    @endif
+
+    @if($offersParallelRestore)
+        <x-checkbox
+            wire:model="parallelRestore"
+            :label="__('Parallel restore (4 jobs)')"
+            :hint="__('Faster for large custom-format snapshots. Leave off if the database uses extensions whose tables reference each other (e.g. pgAgent): their data can load out of order and fail foreign keys.')"
         />
     @endif
 @endif

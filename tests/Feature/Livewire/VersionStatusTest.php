@@ -8,7 +8,11 @@ use Livewire\Livewire;
 use Tests\Support\VersionStatusWithoutGit;
 
 beforeEach(function () {
-    config(['app.version' => null, 'app.commit_hash' => null]);
+    config([
+        'app.version' => null,
+        'app.commit_hash' => null,
+        'app.update_check_enabled' => true,
+    ]);
     Cache::forget('github_latest_release:'.sha1(config('app.github_repo')));
     Livewire::withoutLazyLoading();
 });

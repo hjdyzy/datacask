@@ -24,7 +24,7 @@ cd /opt/datacask
 
 ```bash
 set -euo pipefail
-DATACASK_SOURCE_REF=main
+DATACASK_SOURCE_REF=v1.7.14-dc.15
 DATACASK_RAW_URL="https://raw.githubusercontent.com/hjdyzy/datacask/${DATACASK_SOURCE_REF}/deploy"
 
 curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
@@ -35,6 +35,8 @@ curl --fail --location --retry 5 --connect-timeout 10 --max-time 60 \
 test -f .env || cp .env.example .env
 chmod 600 .env
 ```
+
+将 `DATACASK_SOURCE_REF` 设置为计划部署的 Datacask 发布标签。使用固定版本时，在 `.env` 中将 `DATACASK_IMAGE` 设为同一版本的镜像标签（去掉开头的 `v`）。
 
 生成应用密钥：
 
@@ -72,6 +74,18 @@ docker compose logs --tail=100 app worker
 
 登录 Datacask 后，在“卷”中添加 S3 存储，填写 MinIO 端点、存储桶、区域和专用访问密钥。
 
+## 使用 NFS 存储
+
+先将 NFS 共享挂载到部署服务器，并让 Datacask 运行用户可写。下载同一版本的 `compose.nfs.yaml`，
+将 `DATACASK_NFS_MOUNT_PATH` 写入 `.env`，值为服务器上的挂载路径（例如 `/mnt/datacask-backups`）。
+
+```bash
+mountpoint /mnt/datacask-backups
+docker compose -f compose.yaml -f compose.nfs.yaml up -d
+```
+
+在 Datacask 的“卷”中选择本地存储，路径填 `/backups`。执行升级和重启时继续使用这两个 Compose 文件。
+
 ## 首次验收
 
 1. 添加一个测试用 MySQL 实例。
@@ -86,6 +100,8 @@ docker compose logs --tail=100 app worker
 ```bash
 docker compose exec -T postgres pg_dump -U datacask -d datacask -Fc > "datacask-$(date +%Y%m%d-%H%M%S).dump"
 ```
+
+从 1.9 或更早版本升级时，先按 [1.10 迁移说明](../docs/docs/self-hosting/migrate-to-1-10.md) 检查已有文件的 UID/GID。部署文件和应用镜像应使用同一发布版本的配置。
 
 等待运行中的备份任务完成，然后拉取最新镜像：
 

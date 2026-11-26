@@ -3,6 +3,7 @@
 use App\Enums\DatabaseSelectionMode;
 use App\Enums\DatabaseType;
 use App\Livewire\DatabaseServer\BackupForm;
+use App\Support\BackupConfiguration;
 use App\Models\Backup;
 use Illuminate\Validation\ValidationException;
 
@@ -31,7 +32,7 @@ test('excluded mode keeps the exclusion list through selection normalisation', f
         'database_include_pattern' => null,
     ];
 
-    BackupForm::normalizeSelection($entry, DatabaseType::MYSQL);
+    BackupConfiguration::normalizeSelection($entry, DatabaseType::MYSQL);
 
     expect($entry['database_names'])->toBe(['legacy_db']);
 });
@@ -43,7 +44,7 @@ test('switching back to all databases drops the stored exclusion list', function
         'database_include_pattern' => null,
     ];
 
-    BackupForm::normalizeSelection($entry, DatabaseType::MYSQL);
+    BackupConfiguration::normalizeSelection($entry, DatabaseType::MYSQL);
 
     expect($entry['database_names'])->toBeNull();
 });
@@ -73,7 +74,7 @@ test('excluded mode filters system databases while preserving user exclusions', 
         'database_include_pattern' => null,
     ];
 
-    BackupForm::normalizeSelection($entry, DatabaseType::MYSQL);
+    BackupConfiguration::normalizeSelection($entry, DatabaseType::MYSQL);
 
     expect($entry['database_names'])->toBe(['legacy_db', 'analytics_db']);
 });

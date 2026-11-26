@@ -2,13 +2,18 @@
 
 namespace App\Livewire\DatabaseServer;
 
+use App\Actions\Backup\TriggerBackupAction;
+use App\Actions\DatabaseServer\DeleteDatabaseServerAction;
+use App\Enums\BackupDiscoveryState;
 use App\Enums\DatabaseType;
+use App\Exceptions\DatabaseServer\DatabaseServerFilesNotDeletedException;
+use App\Livewire\Concerns\ConfirmsDeletion;
 use App\Livewire\Concerns\FiltersAndPaginates;
+use App\Livewire\DatabaseServer\Concerns\OpensServerRestore;
 use App\Models\Backup;
 use App\Models\DatabaseServer;
 use App\Models\NotificationChannel;
 use App\Queries\DatabaseServerQuery;
-use App\Services\Backup\TriggerBackupAction;
 use App\Traits\OpensAdminerForServer;
 use App\Traits\RunsServerBackups;
 use App\Traits\Toast;
@@ -25,23 +30,19 @@ use Livewire\WithPagination;
 #[Title('Database Servers')]
 class Index extends Component
 {
-    use AuthorizesRequests, FiltersAndPaginates, OpensAdminerForServer, RunsServerBackups, Toast, WithPagination;
+    use AuthorizesRequests, ConfirmsDeletion, FiltersAndPaginates, OpensAdminerForServer, OpensServerRestore, RunsServerBackups, Toast, WithPagination;
 
     #[Url]
     public string $search = '';
+
+    #[Url]
+    public string $dbTypeFilter = '';
 
     /** @var array<string, string> */
     public array $sortBy = ['column' => 'created_at', 'direction' => 'desc'];
 
     #[Locked]
-    public ?string $deleteId = null;
-
-    #[Locked]
     public ?string $restoreId = null;
-
-    public bool $showDeleteModal = false;
-
-    public bool $showRedisRestoreModal = false;
 
     public int $deleteSnapshotCount = 0;
 
@@ -62,55 +63,39 @@ class Index extends Component
 
     public function confirmDelete(string $id): void
     {
-        $server = DatabaseServer::findOrFail($id);
+        $server = $this->confirmDeletion(DatabaseServer::query(), $id);
 
-        $this->authorize('delete', $server);
-
-        $this->deleteId = $id;
         $this->deleteSnapshotCount = $server->snapshots()->count();
         $this->keepFiles = false;
-        $this->showDeleteModal = true;
     }
 
     public function delete(): void
     {
-        if (! $this->deleteId) {
+        $server = $this->pendingDeletion(DatabaseServer::query());
+
+        if ($server === null) {
             return;
         }
 
-        $server = DatabaseServer::findOrFail($this->deleteId);
+        try {
+            DeleteDatabaseServerAction::run($server, $this->keepFiles);
+        } catch (DatabaseServerFilesNotDeletedException) {
+            $this->closeDeletion();
+            $this->error(__('The database server was kept because some backup files could not be deleted. Try again, or delete it while keeping the files.'));
 
-        $this->authorize('delete', $server);
+            return;
+        }
 
-        $server->skipFileCleanup = $this->keepFiles;
-        $server->delete();
-        $this->deleteId = null;
-        $this->showDeleteModal = false;
+        $this->closeDeletion();
 
         $this->success(__('Database server deleted successfully!'));
     }
 
     public function confirmRestore(string $id): void
     {
-        $server = DatabaseServer::findOrFail($id);
-
-        $this->authorize('restore', $server);
+        $this->openRestoreFor(DatabaseServer::findOrFail($id));
 
         $this->restoreId = $id;
-
-        if ($server->agent_id) {
-            $this->error(__('Restore is not yet supported for agent-backed servers.'));
-
-            return;
-        }
-
-        if ($server->database_type === DatabaseType::REDIS) {
-            $this->showRedisRestoreModal = true;
-
-            return;
-        }
-
-        $this->dispatch('open-restore-modal', mode: 'from-server', targetServerId: $id);
     }
 
     public function openAdminer(string $id): void
@@ -118,7 +103,7 @@ class Index extends Component
         $this->openAdminerForServer(DatabaseServer::findOrFail($id));
     }
 
-    public function runBackup(string $backupId, TriggerBackupAction $action): void
+    public function runBackup(string $backupId): void
     {
         $backup = Backup::with(['databaseServer', 'volumes', 'backupSchedule'])->findOrFail($backupId);
 
@@ -126,23 +111,34 @@ class Index extends Component
 
         try {
             $userId = auth()->id();
-            $action->execute($backup, is_int($userId) ? $userId : null);
-            $this->success(
-                title: __('Backup started successfully!'),
-                description: $backup->getDisplayLabel(),
-            );
+            $result = TriggerBackupAction::run($backup, is_int($userId) ? $userId : null);
+
+            match ($result->discovery) {
+                BackupDiscoveryState::Dispatched => $this->success(
+                    title: __('Database discovery dispatched to agent. Backups will start once databases are discovered.'),
+                    description: $backup->getDisplayLabel(),
+                ),
+                BackupDiscoveryState::AlreadyRunning => $this->info(
+                    title: __('Database discovery is already running on the agent. Backups will start once databases are discovered.'),
+                    description: $backup->getDisplayLabel(),
+                ),
+                BackupDiscoveryState::NotNeeded => $this->success(
+                    title: __('Backup started successfully!'),
+                    description: $backup->getDisplayLabel(),
+                ),
+            };
         } catch (\Throwable $e) {
             $this->error($e->getMessage(), timeout: 0);
         }
     }
 
-    public function runBackupAll(string $serverId, TriggerBackupAction $action): void
+    public function runBackupAll(string $serverId): void
     {
         $server = DatabaseServer::with(['backups.volumes', 'backups.backupSchedule'])->findOrFail($serverId);
 
         $this->authorize('backup', $server);
 
-        $this->triggerAllBackups($server, $action);
+        $this->triggerAllBackups($server);
     }
 
     public function toggleBackupsEnabled(string $id): void
@@ -160,10 +156,19 @@ class Index extends Component
         );
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function dbTypeOptions(): array
+    {
+        return DatabaseType::toSelectOptions();
+    }
+
     public function render(): View
     {
         $servers = DatabaseServerQuery::buildFromParams(
-            search: $this->search,
+            search: $this->search ?: null,
+            dbTypeFilter: $this->dbTypeFilter ?: null,
             sortColumn: $this->sortBy['column'],
             sortDirection: $this->sortBy['direction']
         )->paginate(10);
@@ -174,6 +179,7 @@ class Index extends Component
         return view('livewire.database-server.index', [
             'servers' => $servers,
             'headers' => $this->headers(),
+            'dbTypeOptions' => $this->dbTypeOptions(),
             'canAdminer' => Gate::allows('adminer', DatabaseServer::class),
         ]);
     }
@@ -183,6 +189,6 @@ class Index extends Component
      */
     protected function filterProperties(): array
     {
-        return ['search'];
+        return ['search', 'dbTypeFilter'];
     }
 }

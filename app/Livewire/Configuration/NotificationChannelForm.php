@@ -38,6 +38,10 @@ class NotificationChannelForm extends Form
 
     public string $config_secret = '';
 
+    public string $config_channel = '';
+
+    public string $config_topic = '';
+
     // Sensitive field existence flags
     public bool $has_config_webhook_url = false;
 
@@ -68,6 +72,7 @@ class NotificationChannelForm extends Form
             NotificationChannelType::Telegram => $this->loadTelegramConfig($config),
             NotificationChannelType::Pushover => $this->loadPushoverConfig($config),
             NotificationChannelType::Gotify => $this->loadGotifyConfig($config),
+            NotificationChannelType::PushPlus => $this->loadPushPlusConfig($config),
             NotificationChannelType::WeCom => $this->has_config_webhook_url = ! empty($config['webhook_url']),
             NotificationChannelType::Webhook => $this->loadWebhookConfig($config),
         };
@@ -108,6 +113,16 @@ class NotificationChannelForm extends Form
     {
         $this->config_url = $config['url'] ?? '';
         $this->has_config_token = ! empty($config['token']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function loadPushPlusConfig(array $config): void
+    {
+        $this->has_config_token = ! empty($config['token']);
+        $this->config_channel = $config['channel'] ?? '';
+        $this->config_topic = $config['topic'] ?? '';
     }
 
     /**
@@ -159,6 +174,11 @@ class NotificationChannelForm extends Form
                 'config_url' => ['required', 'string', 'url', 'max:500', new SafeEndpointUrl],
                 'config_token' => [($isEdit && $this->has_config_token) ? 'nullable' : 'required', 'string', 'max:500'],
             ]),
+            NotificationChannelType::PushPlus => array_merge($rules, [
+                'config_token' => [($isEdit && $this->has_config_token) ? 'nullable' : 'required', 'string', 'max:500'],
+                'config_channel' => ['nullable', 'string', 'alpha_dash', 'max:50'],
+                'config_topic' => ['nullable', 'string', 'max:100'],
+            ]),
             NotificationChannelType::WeCom => array_merge($rules, [
                 'config_webhook_url' => [($isEdit && $this->has_config_webhook_url) ? 'nullable' : 'required', 'string', 'url', 'max:500', new SafeEndpointUrl],
             ]),
@@ -187,6 +207,7 @@ class NotificationChannelForm extends Form
             NotificationChannelType::Telegram => ['bot_token' => $this->config_bot_token, 'chat_id' => $this->config_chat_id, 'topic_id' => $this->config_topic_id],
             NotificationChannelType::Pushover => ['token' => $this->config_token, 'user_key' => $this->config_user_key],
             NotificationChannelType::Gotify => ['url' => $this->config_url, 'token' => $this->config_token],
+            NotificationChannelType::PushPlus => ['token' => $this->config_token, 'channel' => $this->config_channel, 'topic' => $this->config_topic],
             NotificationChannelType::WeCom => ['webhook_url' => $this->config_webhook_url],
             NotificationChannelType::Webhook => ['url' => $this->config_url, 'secret' => $this->config_secret],
         };

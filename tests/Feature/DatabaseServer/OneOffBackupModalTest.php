@@ -9,7 +9,6 @@ use App\Models\Snapshot;
 use App\Models\User;
 use App\Services\Backup\Databases\DatabaseProvider;
 use App\Services\Backup\TriggerOneOffBackupAction;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -76,8 +75,8 @@ test('database discovery failure remains visible and creates no tasks', function
 
 test('cross organization requests cannot list databases', function () {
     [, $server] = foreignServer();
-    expect(fn () => Livewire::actingAs($this->user)->test(OneOffBackupModal::class)
-        ->call('openModal', $server->id))->toThrow(ModelNotFoundException::class);
+    Livewire::actingAs($this->user)->test(OneOffBackupModal::class)
+        ->call('openModal', $server->id)->assertNotFound();
 });
 
 test('retry errors use the existing snapshot error channel', function () {

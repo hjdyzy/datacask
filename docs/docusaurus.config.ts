@@ -6,6 +6,8 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const version = process.env.DOCS_VERSION;
 const isLocalBuild = process.env.DOCS_LOCAL === 'true';
+// Raw HTML added to the <head> of every page, e.g. an analytics tag. Nothing when unset.
+const analyticsSnippet = process.env.ANALYTICS_SNIPPET;
 
 // Versioned builds: scripts/prepare-versions.sh snapshots one docs version per
 // 1.x minor from git tags. When versions.json exists, the latest minor is
@@ -17,17 +19,22 @@ const versions: string[] = fs.existsSync(versionsFile)
     : [];
 const isVersioned = versions.length > 0;
 
+const baseUrl = '/datacask/';
+
 const config: Config = {
     title: 'Datacask',
     tagline: 'Self-hosted database backup management',
     favicon: 'img/favicon.ico',
 
     plugins: [
+        ...(analyticsSnippet
+            ? [() => ({name: 'analytics-snippet', injectHtmlTags: () => ({headTags: [analyticsSnippet]})})]
+            : []),
         [
             'docusaurus-plugin-llms',
             {
                 title: 'Datacask Documentation',
-                description: 'Self-hosting and user documentation for Datacask database backup management.',
+                description: 'Self-hosting and user documentation for Datacask.',
                 generateLLMsTxt: true,
                 generateLLMsFullTxt: true,
                 generateMarkdownFiles: true,
@@ -45,6 +52,7 @@ const config: Config = {
                     'self-hosting/native-ubuntu.md',
                     'self-hosting/configuration/**',
                     'self-hosting/versioning.md',
+                    'self-hosting/migrate-to-1-10.md',
                     'changelog.md',
                     'user-guide/intro.md',
                     'user-guide/database-servers.md',
@@ -64,7 +72,7 @@ const config: Config = {
     ],
 
     url: isLocalBuild ? 'http://localhost:3000' : 'https://hjdyzy.github.io',
-    baseUrl: '/datacask/',
+    baseUrl,
 
     organizationName: 'hjdyzy',
     projectName: 'datacask',
@@ -128,11 +136,18 @@ const config: Config = {
     ],
 
     themeConfig: {
+        announcementBar: {
+            id: 'security-1-10-6',
+            content: `<strong>Security update:</strong> update Datacask to a release based on Databasement 1.10.6 or later: <a href="${baseUrl}self-hosting/docker-compose#updating">Docker Compose</a> · <a href="${baseUrl}self-hosting/docker#updating">Docker</a> · <a href="${baseUrl}self-hosting/kubernetes-helm#updating">Helm</a> · <a href="${baseUrl}self-hosting/native-ubuntu#updating-databasement">Ubuntu</a>`,
+            backgroundColor: '#b91c1c',
+            textColor: '#ffffff',
+            isCloseable: true,
+        },
         navbar: {
             title: 'Datacask',
             logo: {
                 alt: 'Datacask Logo',
-                src: 'img/logo.png',
+                src: 'img/favicon.ico',
             },
             items: [
                 {
@@ -200,12 +215,12 @@ const config: Config = {
                     ],
                 },
             ],
-            copyright: `Copyright © ${new Date().getFullYear()} Datacask. Built with Docusaurus.`,
+            copyright: `Copyright © ${new Date().getFullYear()} Datacask contributors.`,
         },
         prism: {
             theme: prismThemes.github,
             darkTheme: prismThemes.dracula,
-            additionalLanguages: ['bash', 'yaml', 'docker'],
+            additionalLanguages: ['bash', 'yaml', 'docker', 'diff'],
         },
     } satisfies Preset.ThemeConfig,
 };

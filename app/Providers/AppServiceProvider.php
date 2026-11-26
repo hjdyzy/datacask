@@ -14,29 +14,36 @@ use App\Services\Backup\Filesystems\Awss3Filesystem;
 use App\Services\Backup\Filesystems\AzureFilesystem;
 use App\Services\Backup\Filesystems\FilesystemProvider;
 use App\Services\Backup\Filesystems\FtpFilesystem;
+use App\Services\Backup\Filesystems\GdriveFilesystem;
 use App\Services\Backup\Filesystems\LocalFilesystem;
 use App\Services\Backup\Filesystems\SftpFilesystem;
 use App\Services\Backup\Filesystems\SmbFilesystem;
 use App\Services\Backup\ShellProcessor;
 use App\Services\CurrentOrganization;
 use App\Support\QueueTimeouts;
+use App\Support\TlsVerification;
 use Dedoc\Scramble\Scramble;
 use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\Parameter;
 use Dedoc\Scramble\Support\Generator\Schema;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Dedoc\Scramble\Support\Generator\Types\StringType;
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Exception\BadResponseException;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Http\Request;
+use Illuminate\Notifications\Channels\SlackWebhookChannel;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 use Silber\Bouncer\BouncerFacade as Bouncer;
 use SocialiteProviders\Manager\SocialiteWasCalled;
 
@@ -52,6 +59,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CurrentOrganization::class);
         $this->app->singleton(AppConfigService::class);
         $this->app->singleton(ShellProcessor::class);
+        $this->app->when(SlackWebhookChannel::class)
+            ->needs(GuzzleClient::class)
+            ->give(fn () => new GuzzleClient(['allow_redirects' => [
+                'max' => 1,
+                'on_redirect' => fn (RequestInterface $request, ResponseInterface $response) => throw new BadResponseException('Refused to follow a redirect from the Slack webhook.', $request, $response),
+            ]]));
         $this->app->singleton(CompressorFactory::class);
         $this->app->singleton(CompressorInterface::class, function ($app) {
             return $app->make(CompressorFactory::class)->make();
@@ -67,6 +80,7 @@ class AppServiceProvider extends ServiceProvider
             $provider->add(new FtpFilesystem);
             $provider->add(new AzureFilesystem);
             $provider->add(new SmbFilesystem);
+            $provider->add(new GdriveFilesystem);
 
             return $provider;
         });
@@ -87,6 +101,7 @@ class AppServiceProvider extends ServiceProvider
                 'client_id' => $provider['client_id'] ?? null,
                 'client_secret' => $provider['client_secret'] ?? null,
                 'redirect' => "/oauth/{$name}/callback",
+                'guzzle' => ['verify' => TlsVerification::option()],
             ];
 
             // Add provider-specific config
@@ -107,7 +122,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->warnDeprecatedEnvVars();
         $this->configureQueueTimeouts();
         $this->registerOidcSocialiteProvider();
         $this->validateOAuthConfiguration();
@@ -170,8 +184,23 @@ class AppServiceProvider extends ServiceProvider
         // policy abilities (create/update/delete/...) keep their own super-admin
         // handling. A Gate::before that returns null defers to Bouncer's grant
         // resolution — unlike a Gate::define, which would shadow it.
+        //
+        // This also enforces Sanctum token scoping for the catalogue: a real,
+        // scoped-out PersonalAccessToken is denied outright before Bouncer's
+        // role/direct-ability resolution ever runs, without touching the 12
+        // individual policy files. It runs before the super-admin bypass, so a
+        // scoped token limits a super admin too. Session auth and legacy `['*']`
+        // tokens are unaffected (User::tokenCovers()).
         Gate::before(function (?User $user, string $ability): ?bool {
-            if ($user?->isSuperAdmin() && in_array($ability, Ability::names(), true)) {
+            if ($user === null || ! in_array($ability, Ability::names(), true)) {
+                return null;
+            }
+
+            if (! $user->tokenCovers($ability)) {
+                return false;
+            }
+
+            if ($user->isSuperAdmin()) {
                 return true;
             }
 
@@ -222,35 +251,24 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * Log deprecation warnings for environment variables that have been
-     * replaced by in-app configuration (volumes, backup, notifications).
-     */
-    private function warnDeprecatedEnvVars(): void
-    {
-        if (config('app.has_deprecated_aws_env')) {
-            Log::warning('Deprecated AWS_* environment variables detected. S3 credentials are now configured per-volume in the UI. You can safely remove AWS_* variables from your environment.');
-        }
-
-        if (config('app.has_deprecated_backup_env')) {
-            Log::warning('Deprecated BACKUP_* environment variables detected. Backup settings are now configured in the UI. You can safely remove BACKUP_* variables from your environment.');
-        }
-
-    }
-
-    /**
      * Keep the queue's retry_after above the longest a backup/restore may run.
      *
-     * Only workers act on retry_after, so this is skipped for web requests to
-     * avoid a database read on every one. Agent mode runs on the sync driver and
-     * has no database at all.
+     * Only workers act on retry_after, so it is read when `queue:work` starts
+     * (before the worker opens its queue connection) rather than on every boot,
+     * which would put a database read in front of every request and command.
+     * Agent mode runs on the sync driver and has no database at all.
      */
     private function configureQueueTimeouts(): void
     {
-        if (config('agent.enabled') || ! $this->app->runningInConsole()) {
+        if (config('agent.enabled')) {
             return;
         }
 
-        QueueTimeouts::apply();
+        Event::listen(function (CommandStarting $event): void {
+            if ($event->command === 'queue:work') {
+                QueueTimeouts::apply();
+            }
+        });
     }
 
     /**

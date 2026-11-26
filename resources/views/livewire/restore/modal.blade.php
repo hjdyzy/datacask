@@ -52,14 +52,14 @@
                         @if($mode === RestoreModalMode::FromRestoreIndex)
                             <x-select
                                 wire:model.live="dbTypeFilter"
-                                :options="collect($this->dbTypeOptions())->prepend(['id' => '', 'name' => __('All types')])->all()"
+                                :options="collect($this->dbTypeOptions())->prepend(['id' => '', 'name' => __('All Types')])->all()"
                                 class="w-44"
                             />
                         @endif
 
                         <x-select
                             wire:model.live="serverFilter"
-                            :options="$this->compatibleServers->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->prepend(['id' => '', 'name' => __('All servers')])->all()"
+                            :options="$this->compatibleServers->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])->prepend(['id' => '', 'name' => __('All Servers')])->all()"
                             class="w-48"
                         />
                         <x-input
@@ -161,6 +161,7 @@
                     @include('livewire.restore._destination-step', [
                         'targetLocked' => $mode->targetServerLocked(),
                         'snapshotPreservesPrivileges' => (bool) ($snapshot?->metadata['dump_privileges'] ?? false),
+                        'snapshotIsCustomFormat' => ($snapshot?->metadata['dump_format'] ?? null) === 'custom',
                     ])
 
                     @if($snapshot)

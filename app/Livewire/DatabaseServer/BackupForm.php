@@ -8,9 +8,12 @@ use App\Models\Backup;
 use App\Models\BackupSchedule;
 use App\Models\DatabaseServer;
 use App\Models\Volume;
+use App\Rules\ExcludedTableNames;
+use App\Rules\SafeDatabaseName;
 use App\Rules\SafeDatabasePath;
 use App\Rules\SafePath;
 use App\Services\CurrentOrganization;
+use App\Support\BackupConfiguration;
 use App\Support\Formatters;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -45,6 +48,8 @@ final class BackupForm
             'database_names' => [],
             'database_names_input' => '',
             'database_include_pattern' => '',
+            'exclude_tables' => false,
+            'excluded_tables' => '',
         ];
     }
 
@@ -56,7 +61,7 @@ final class BackupForm
     public static function fromModel(Backup $backup): array
     {
         $databaseNames = $backup->database_selection_mode === DatabaseSelectionMode::Excluded
-            ? self::filterSystemDatabaseNames($backup->database_names ?? [])
+            ? BackupConfiguration::filterSystemDatabaseNames($backup->database_names ?? [])
             : ($backup->database_names ?? []);
 
         return [
@@ -73,119 +78,9 @@ final class BackupForm
             'database_names' => $databaseNames,
             'database_names_input' => implode(', ', $databaseNames),
             'database_include_pattern' => $backup->database_include_pattern ?? '',
+            'exclude_tables' => ! empty($backup->excluded_tables),
+            'excluded_tables' => implode(', ', $backup->excluded_tables ?? []),
         ];
-    }
-
-    /**
-     * Convert one validated entry into the array shape accepted by
-     * `Backup::create()` / `Backup::update()`.
-     *
-     * @param  array<string, mixed>  $entry
-     * @return array<string, mixed>
-     */
-    public static function toPersistedData(array $entry): array
-    {
-        $retentionPolicy = $entry['retention_policy'] ?? Backup::RETENTION_DAYS;
-
-        $data = [
-            'path' => ! empty($entry['path']) ? $entry['path'] : null,
-            'backup_schedule_id' => $entry['backup_schedule_id'] ?? '',
-            'retention_policy' => $retentionPolicy,
-            'retention_days' => null,
-            'gfs_keep_daily' => null,
-            'gfs_keep_weekly' => null,
-            'gfs_keep_monthly' => null,
-            'database_selection_mode' => $entry['database_selection_mode'] ?? DatabaseSelectionMode::All->value,
-            'database_names' => $entry['database_names'] ?? null,
-            'database_include_pattern' => ! empty($entry['database_include_pattern']) ? $entry['database_include_pattern'] : null,
-        ];
-
-        if ($retentionPolicy === Backup::RETENTION_DAYS) {
-            $data['retention_days'] = $entry['retention_days'] ?? null;
-        } elseif ($retentionPolicy === Backup::RETENTION_GFS) {
-            $data['gfs_keep_daily'] = ! empty($entry['gfs_keep_daily']) ? (int) $entry['gfs_keep_daily'] : null;
-            $data['gfs_keep_weekly'] = ! empty($entry['gfs_keep_weekly']) ? (int) $entry['gfs_keep_weekly'] : null;
-            $data['gfs_keep_monthly'] = ! empty($entry['gfs_keep_monthly']) ? (int) $entry['gfs_keep_monthly'] : null;
-        }
-
-        return $data;
-    }
-
-    /**
-     * Whether a database name is a built-in system database.
-     */
-    public static function isSystemDatabaseName(string $name): bool
-    {
-        return in_array($name, [
-            'information_schema', 'performance_schema', 'mysql', 'sys',
-            'admin', 'local', 'config',
-            'master', 'tempdb', 'model', 'msdb',
-            'rdsadmin', 'azure_maintenance', 'azure_sys',
-        ], true);
-    }
-
-    /**
-     * Remove built-in system database names from an exclusion list.
-     *
-     * @param  array<int, string>  $names
-     * @return array<int, string>
-     */
-    private static function filterSystemDatabaseNames(array $names): array
-    {
-        return array_values(array_filter(
-            $names,
-            fn (string $name): bool => ! self::isSystemDatabaseName($name),
-        ));
-    }
-
-    /**
-     * Normalize selection-mode related fields based on the parent server's
-     * database type.
-     *
-     * @param  array<string, mixed>  $entry
-     */
-    public static function normalizeSelection(array &$entry, DatabaseType $serverType): void
-    {
-        if ($serverType === DatabaseType::REDIS) {
-            $entry['database_selection_mode'] = DatabaseSelectionMode::All->value;
-            $entry['database_names'] = null;
-            $entry['database_include_pattern'] = null;
-
-            return;
-        }
-
-        // Path-based types (SQLite, Firebird) keep their file paths in
-        // `database_names` and always run in Selected mode — there's no
-        // server-side enumeration to support All / Pattern.
-        if ($serverType->identifiesDatabasesByPath()) {
-            $entry['database_selection_mode'] = DatabaseSelectionMode::Selected->value;
-            $entry['database_include_pattern'] = null;
-            $paths = $entry['database_names'] ?? [];
-            $entry['database_names'] = array_values(array_filter(
-                array_map('trim', is_array($paths) ? $paths : []),
-            ));
-
-            return;
-        }
-
-        $mode = $entry['database_selection_mode'] ?? null;
-
-        if ($mode === DatabaseSelectionMode::Excluded->value) {
-            $names = $entry['database_names'] ?? [];
-            $entry['database_names'] = self::filterSystemDatabaseNames(
-                is_array($names) ? $names : [],
-            );
-        }
-
-        // Selected and Excluded both carry their meaning in `database_names`;
-        // every other mode has no list to keep.
-        if (! in_array($mode, [DatabaseSelectionMode::Selected->value, DatabaseSelectionMode::Excluded->value], true)) {
-            $entry['database_names'] = null;
-        }
-
-        if ($mode !== DatabaseSelectionMode::Pattern->value) {
-            $entry['database_include_pattern'] = null;
-        }
     }
 
     /**
@@ -284,13 +179,14 @@ final class BackupForm
                 Rule::in(array_map(fn (DatabaseSelectionMode $m) => $m->value, DatabaseSelectionMode::cases())),
             ];
             $rules[$prefix.'database_names'] = 'nullable|array';
-            $rules[$prefix.'database_names.*'] = 'string|max:255';
+            $rules[$prefix.'database_names.*'] = ['string', 'max:255'];
             $rules[$prefix.'database_include_pattern'] = 'nullable|string|max:500';
 
             $mode = $entry['database_selection_mode'] ?? null;
 
             if ($mode === DatabaseSelectionMode::Selected->value) {
                 $rules[$prefix.'database_names'] = 'required|array|min:1';
+                $rules[$prefix.'database_names.*'] = ['string', 'max:255', new SafeDatabaseName];
             }
 
             // Excluded mode needs at least one name: an empty exclusion list
@@ -302,6 +198,10 @@ final class BackupForm
             if ($mode === DatabaseSelectionMode::Pattern->value) {
                 $rules[$prefix.'database_include_pattern'] = 'required|string|max:500';
             }
+        }
+
+        if ($serverType->supportsExcludedTables() && ! empty($entry['exclude_tables'])) {
+            $rules[$prefix.'excluded_tables'] = ['required', 'string', new ExcludedTableNames];
         }
 
         return $rules;
@@ -424,7 +324,7 @@ final class BackupForm
         $mode = $entry['database_selection_mode'] ?? DatabaseSelectionMode::All->value;
 
         if ($mode === DatabaseSelectionMode::All->value) {
-            return __('all databases');
+            return __('All databases');
         }
 
         if ($mode === DatabaseSelectionMode::Selected->value) {

@@ -8,37 +8,74 @@ trait HasAgentToken
 {
     public bool $showTokenModal = false;
 
-    public string $tokenModalTab = 'docker-tab';
+    public string $tokenModalTab = 'docker-compose-tab';
 
     #[Locked]
     public ?string $newToken = null;
 
     #[Locked]
+    public ?string $envVars = null;
+
+    #[Locked]
     public ?string $dockerCommand = null;
 
     #[Locked]
-    public ?string $envVars = null;
+    public ?string $dockerComposeConfig = null;
+
+    #[Locked]
+    public ?string $helmCommand = null;
 
     public function showTokenModal(string $plainTextToken): void
     {
         $this->newToken = $plainTextToken;
 
         $url = config('app.url');
-
-        $this->dockerCommand = implode("\n", [
-            'docker run -d \\',
-            "  -e DATABASEMENT_URL='{$url}' \\",
-            "  -e DATABASEMENT_AGENT_TOKEN='{$this->newToken}' \\",
-            '  --name datacask-agent \\',
-            '  registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest',
-        ]);
+        $version = $this->releasedVersion();
+        $image = 'registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:'.($version ?: 'latest');
 
         $this->envVars = implode("\n", [
             "DATABASEMENT_URL={$url}",
             "DATABASEMENT_AGENT_TOKEN={$this->newToken}",
         ]);
 
+        $this->dockerCommand = implode("\n", [
+            'docker run -d --restart unless-stopped \\',
+            '  --name databasement-agent \\',
+            "  -e DATABASEMENT_URL='{$url}' \\",
+            "  -e DATABASEMENT_AGENT_TOKEN='{$this->newToken}' \\",
+            "  {$image}",
+        ]);
+
+        $this->dockerComposeConfig = implode("\n", [
+            'services:',
+            '  databasement-agent:',
+            "    image: {$image}",
+            '    restart: unless-stopped',
+            '    environment:',
+            "      DATABASEMENT_URL: '{$url}'",
+            "      DATABASEMENT_AGENT_TOKEN: '{$this->newToken}'",
+        ]);
+
+        $chartVersion = $version ? " \\\n  --version {$version}" : '';
+
+        $this->helmCommand = implode("\n", [
+            'helm repo add datacask https://hjdyzy.github.io/datacask',
+            'helm repo update',
+            'helm install databasement-agent datacask/databasement \\',
+            '  --set app.enabled=false \\',
+            '  --set agents.main.enabled=true \\',
+            "  --set agents.main.url='{$url}' \\",
+            "  --set agents.main.token.value='{$this->newToken}'{$chartVersion}",
+        ]);
+
         $this->showTokenModal = true;
+    }
+
+    protected function releasedVersion(): ?string
+    {
+        $version = ltrim((string) config('app.version'), 'v');
+
+        return preg_match('/^\d+\.\d+\.\d+(?:-dc\.\d+)?$/', $version) ? $version : null;
     }
 
     public function closeTokenModal(): void
@@ -49,8 +86,10 @@ trait HasAgentToken
     protected function resetTokenModal(): void
     {
         $this->newToken = null;
-        $this->dockerCommand = null;
         $this->envVars = null;
+        $this->dockerCommand = null;
+        $this->dockerComposeConfig = null;
+        $this->helmCommand = null;
         $this->showTokenModal = false;
     }
 }

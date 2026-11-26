@@ -35,13 +35,10 @@ services:
 
   worker:
     <<: *datacask-service
-    command:
-      - sh
-      - -c
-      - >-
-        php artisan db:wait --check-migrations &&
-        php artisan queue:work --queue=backups,default --tries=3
-        --timeout=$${BACKUP_JOB_TIMEOUT_SECONDS:-10800} --sleep=3 --max-jobs=500
+    environment:
+      ENABLE_QUEUE_WORKER: "true"
+      ENABLE_WEB_SERVER: "false"
+      ENABLE_SCHEDULER: "false"
     deploy:
       replicas: 2
     depends_on:

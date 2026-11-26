@@ -74,6 +74,8 @@ OAUTH_OIDC_BASE_URL=https://your-idp.com/realms/your-realm  # The OIDC base URL
 OAUTH_OIDC_LABEL=SSO  # Button label on login page
 ```
 
+If your identity provider uses a self-signed certificate or one from a private CA, see [Private CA / Self-Signed Certificates](./application.md#private-ca--self-signed-certificates).
+
 #### Keycloak Setup
 
 1. In Keycloak Admin Console, go to **Clients** and click **Create client**
@@ -141,13 +143,23 @@ Make sure at least one OAuth provider is configured and working before enabling 
 
 ### Auto-Create Users
 
-When enabled (default), new users are automatically created when they log in via OAuth for the first time:
+Whether a first OAuth login creates a Databasement user depends on the provider. Generic OIDC and self-hosted GitLab, whose accounts you control, follow `OAUTH_AUTO_CREATE_USERS`:
 
 ```env
 OAUTH_AUTO_CREATE_USERS=true  # Default: true
 ```
 
-Set to `false` to only allow existing users to log in via OAuth.
+Set it to `false` to only allow existing users to log in through them.
+
+Google, GitHub and gitlab.com let anyone with an account sign in, so they do not create users by default: only users who already exist in Databasement can log in through them. To let them create users, set the provider's own variable:
+
+```env
+OAUTH_GOOGLE_AUTO_CREATE_USERS=true  # Default: false
+OAUTH_GITHUB_AUTO_CREATE_USERS=true  # Default: false
+OAUTH_GITLAB_AUTO_CREATE_USERS=true  # Default: false on gitlab.com, OAUTH_AUTO_CREATE_USERS on a self-hosted OAUTH_GITLAB_HOST
+```
+
+Only do this when access is restricted on the provider side (for example a Google Workspace app with an *Internal* consent screen), since every new account gets `OAUTH_DEFAULT_ROLE`.
 
 ### Default Role
 
@@ -174,6 +186,16 @@ When enabled (default), OAuth logins are automatically linked to existing users 
 ```env
 OAUTH_AUTO_LINK_BY_EMAIL=true  # Default: true
 ```
+
+Linking keeps the user's password, so they can still sign in with it.
+
+With Generic OIDC, an email is only linked when the provider sends `email_verified: true`, so that nobody can take over an account by registering its address on the provider without owning the mailbox. A provider that sends `email_verified: false` is always refused. Some providers (Microsoft Entra ID among them) send no `email_verified` claim at all, and their logins are refused too unless you set:
+
+```env
+OAUTH_OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM=true  # Default: false
+```
+
+Only set it when users cannot choose or change their own email address on the provider. Users already linked keep signing in either way, since returning logins are matched on the provider's user ID, not the email.
 
 ## OIDC Group-Based Role Mapping
 

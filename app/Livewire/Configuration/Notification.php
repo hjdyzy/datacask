@@ -3,20 +3,23 @@
 namespace App\Livewire\Configuration;
 
 use App\Enums\NotificationChannelType;
+use App\Livewire\Configuration\Concerns\GatesConfigurationWrites;
 use App\Models\NotificationChannel;
 use App\Services\NotificationService;
 use App\Traits\Toast;
+use GuzzleHttp\Exception\RequestException as GuzzleRequestException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
-use Symfony\Component\HttpFoundation\Response;
 
 #[Title('Configuration')]
 class Notification extends Component
 {
-    use Toast;
+    use GatesConfigurationWrites, Toast;
 
     public NotificationChannelForm $channelForm;
 
@@ -29,15 +32,14 @@ class Notification extends Component
 
     public bool $showDeleteChannelModal = false;
 
-    #[Computed]
-    public function canManage(): bool
+    protected function manageGate(): array
     {
-        return auth()->user()->can('manage', NotificationChannel::class);
+        return ['manage', NotificationChannel::class];
     }
 
     public function openChannelModal(?string $channelId = null): void
     {
-        abort_unless(auth()->user()->can('manage', NotificationChannel::class), Response::HTTP_FORBIDDEN);
+        $this->authorizeManage();
 
         $this->channelForm->resetFields();
         $this->editingChannelId = $channelId;
@@ -52,7 +54,7 @@ class Notification extends Component
 
     public function saveChannel(): void
     {
-        abort_unless(auth()->user()->can('manage', NotificationChannel::class), Response::HTTP_FORBIDDEN);
+        $this->authorizeManage();
 
         if ($this->editingChannelId) {
             $this->channelForm->channel = NotificationChannel::findOrFail($this->editingChannelId);
@@ -76,7 +78,7 @@ class Notification extends Component
 
     public function deleteChannel(): void
     {
-        abort_unless(auth()->user()->can('manage', NotificationChannel::class), Response::HTTP_FORBIDDEN);
+        $this->authorizeManage();
 
         if (! $this->deleteChannelId) {
             return;
@@ -91,7 +93,7 @@ class Notification extends Component
 
     public function sendTestNotification(string $channelId): void
     {
-        abort_unless(auth()->user()->can('manage', NotificationChannel::class), Response::HTTP_FORBIDDEN);
+        $this->authorizeManage();
 
         $channel = NotificationChannel::findOrFail($channelId);
 
@@ -100,8 +102,19 @@ class Notification extends Component
 
             $this->success(__('Test notification sent to: :channel', ['channel' => $channel->name]));
         } catch (\Throwable $e) {
+            Log::warning('Test notification failed', ['channel_id' => $channel->id, 'error' => $e->getMessage()]);
+
+            $status = match (true) {
+                $e instanceof RequestException => $e->response->status(),
+                $e instanceof GuzzleRequestException => $e->getResponse()?->getStatusCode(),
+                default => null,
+            };
+
             $this->error(
-                title: __('Failed to send test notification: :message', ['message' => $e->getMessage()]),
+                title: $status !== null
+                    ? __('Failed to send test notification: :message', ['message' => "HTTP {$status}"])
+                    : __('Failed to send test notification.'),
+                description: __('Check the Databasement logs for the full error.'),
                 timeout: 0
             );
         }
@@ -123,10 +136,7 @@ class Notification extends Component
      */
     public function getChannelTypeOptions(): array
     {
-        return array_map(
-            fn (NotificationChannelType $type) => ['id' => $type->value, 'name' => $type->label()],
-            NotificationChannelType::cases(),
-        );
+        return NotificationChannelType::toSelectOptions();
     }
 
     public function render(): View

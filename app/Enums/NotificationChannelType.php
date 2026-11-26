@@ -2,11 +2,14 @@
 
 namespace App\Enums;
 
+use App\Enums\Concerns\HasSelectOptions;
+use App\Enums\Concerns\HasSensitiveConfigFields;
 use App\Rules\CommaSeparatedEmails;
-use Illuminate\Support\Facades\Crypt;
 
 enum NotificationChannelType: string
 {
+    use HasSelectOptions, HasSensitiveConfigFields;
+
     case Email = 'email';
     case Slack = 'slack';
     case Discord = 'discord';
@@ -14,6 +17,7 @@ enum NotificationChannelType: string
     case Telegram = 'telegram';
     case Pushover = 'pushover';
     case Gotify = 'gotify';
+    case PushPlus = 'pushplus';
     case WeCom = 'wecom';
     case Webhook = 'webhook';
 
@@ -27,6 +31,7 @@ enum NotificationChannelType: string
             self::Telegram => 'Telegram',
             self::Pushover => 'Pushover',
             self::Gotify => 'Gotify',
+            self::PushPlus => 'PushPlus',
             self::WeCom => __('WeCom Bot'),
             self::Webhook => 'Webhook',
         };
@@ -41,6 +46,7 @@ enum NotificationChannelType: string
             self::Telegram => 'o-paper-airplane',
             self::Pushover => 'o-device-phone-mobile',
             self::Gotify => 'o-bell',
+            self::PushPlus => 'o-bell-alert',
             self::WeCom => 'o-chat-bubble-left-right',
             self::Webhook => 'o-globe-alt',
         };
@@ -61,6 +67,7 @@ enum NotificationChannelType: string
             self::Telegram => ['bot_token'],
             self::Pushover => ['token', 'user_key'],
             self::Gotify => ['token'],
+            self::PushPlus => ['token'],
             self::WeCom => ['webhook_url'],
             self::Webhook => ['secret'],
         };
@@ -92,6 +99,7 @@ enum NotificationChannelType: string
             self::DiscordWebhook, self::Gotify, self::Webhook => $config['url'] ?? null,
             self::Telegram => $config['chat_id'] ?? null,
             self::Pushover => $config['user_key'] ?? null,
+            self::PushPlus => $config['token'] ?? null,
             self::WeCom => $config['webhook_url'] ?? null,
         };
     }
@@ -113,46 +121,9 @@ enum NotificationChannelType: string
             self::Telegram => array_filter(['Chat ID' => $config['chat_id'] ?? '', 'Topic ID' => $config['topic_id'] ?? '']),
             self::Pushover => ['Type' => 'Push'],
             self::Gotify => array_filter(['URL' => $config['url'] ?? '']),
+            self::PushPlus => ['Channel' => ($config['channel'] ?? '') ?: 'wechat'] + array_filter(['Topic' => $config['topic'] ?? '']),
             self::WeCom => ['Type' => __('Robot webhook')],
             self::Webhook => array_filter(['URL' => $config['url'] ?? '']),
         };
-    }
-
-    /**
-     * Merge sensitive fields from persisted config when form values are empty.
-     *
-     * @param  array<string, mixed>  $formConfig
-     * @param  array<string, mixed>  $persistedConfig
-     * @return array<string, mixed>
-     */
-    public function mergeSensitiveFromPersisted(array $formConfig, array $persistedConfig): array
-    {
-        foreach ($this->sensitiveFields() as $field) {
-            if (empty($formConfig[$field]) && ! empty($persistedConfig[$field])) {
-                $formConfig[$field] = $persistedConfig[$field];
-            }
-        }
-
-        return $formConfig;
-    }
-
-    /**
-     * Encrypt sensitive fields, optionally preserving existing encrypted values.
-     *
-     * @param  array<string, mixed>  $config
-     * @param  array<string, mixed>  $persistedEncrypted
-     * @return array<string, mixed>
-     */
-    public function encryptSensitiveFields(array $config, array $persistedEncrypted = []): array
-    {
-        foreach ($this->sensitiveFields() as $field) {
-            if (! empty($config[$field])) {
-                $config[$field] = Crypt::encryptString($config[$field]);
-            } elseif (! empty($persistedEncrypted[$field])) {
-                $config[$field] = $persistedEncrypted[$field];
-            }
-        }
-
-        return $config;
     }
 }

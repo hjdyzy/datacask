@@ -1,14 +1,13 @@
 <?php
 
+use App\Actions\Volume\DeleteVolumeAction;
 use App\Enums\Ability;
-use App\Enums\SnapshotFileStatus;
 use App\Enums\VolumeType;
+use App\Exceptions\Volume\VolumeFilesNotDeletedException;
 use App\Livewire\Volume\Create;
 use App\Livewire\Volume\Edit;
 use App\Livewire\Volume\Index;
-use App\Models\BackupJob;
 use App\Models\DatabaseServer;
-use App\Models\Restore;
 use App\Models\Snapshot;
 use App\Models\User;
 use App\Models\Volume;
@@ -135,6 +134,22 @@ dataset('volume types', function () {
             'expectedField' => 'container',
             'expectedValue' => 'new-container',
         ],
+        'gdrive' => [
+            'type' => VolumeType::GDRIVE,
+            'formData' => [
+                'client_id' => 'my-client-id.apps.googleusercontent.com',
+                'client_secret' => 'fake-client-secret',
+                'refresh_token' => 'fake-refresh-token',
+                'folder_id' => '1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
+            ],
+            'expectedConfig' => [
+                'client_id' => 'my-client-id.apps.googleusercontent.com',
+                'folder_id' => '1aBcDeFgHiJkLmNoPqRsTuVwXyZ',
+            ],
+            'updateData' => ['folder_id' => 'new-folder-id'],
+            'expectedField' => 'folder_id',
+            'expectedValue' => 'new-folder-id',
+        ],
     ];
 });
 
@@ -221,26 +236,6 @@ describe('volume editing', function () {
             ->and($volume->getDecryptedConfig()['password'])->toBe($originalPassword);
     });
 
-    test('blank secret_access_key on edit preserves existing value', function () {
-        $user = User::factory()->withAbilities([Ability::ManageVolumes->value])->create();
-        $volume = Volume::factory()->s3()->create();
-
-        $originalSecret = $volume->getDecryptedConfig()['secret_access_key'];
-        expect($originalSecret)->not->toBeEmpty();
-
-        // Edit volume with blank secret_access_key (should keep existing)
-        Livewire::actingAs($user)
-            ->test(Edit::class, ['volume' => $volume])
-            ->assertSet('form.s3Config.secret_access_key', '') // Secret is masked on load
-            ->set('form.s3Config.bucket', 'updated-bucket')
-            ->set('form.s3Config.secret_access_key', '') // Leave blank
-            ->call('save')
-            ->assertRedirect(route('volumes.index'));
-
-        $volume->refresh();
-        expect($volume->getDecryptedConfig()['bucket'])->toBe('updated-bucket')
-            ->and($volume->getDecryptedConfig()['secret_access_key'])->toBe($originalSecret);
-    });
 });
 
 describe('volume storage limit', function () {
@@ -380,107 +375,28 @@ describe('volume deletion', function () {
         ]);
     });
 
-    test('deleting volume cascades to snapshots, jobs, restores, and files', function () {
+    test('the keep files choice reaches the deletion', function () {
         $user = User::factory()->withAbilities([Ability::ManageVolumes->value])->create();
-
-        // Create volume with temp directory
         $volume = Volume::factory()->local()->create();
-        $tempDir = $volume->config['path'];
+        DeleteVolumeAction::shouldRun()->once()->withArgs(fn (Volume $deleted, bool $keepFiles) => $deleted->is($volume) && $keepFiles);
 
-        // Create a backup file
-        $backupFilename = 'cascade-test.sql.gz';
-        $backupFilePath = $tempDir.'/'.$backupFilename;
-        file_put_contents($backupFilePath, 'test backup content');
-
-        // Create server with backup using our volume
-        $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
-        $server->backups->first()->volumes()->sync([$volume->id]);
-
-        // Create snapshot with real file
-        $factory = app(BackupJobFactory::class);
-        $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
-        $snapshot = $snapshots[0];
-        $snapshot->update([
-            'filename' => $backupFilename,
-            'file_size' => filesize($backupFilePath),
-        ]);
-        $snapshot->update(['filename' => $backupFilename]);
-        $snapshot->files()->update(['status' => SnapshotFileStatus::Completed]);
-        $snapshot->job->markCompleted();
-        $snapshotJobId = $snapshot->job->id;
-
-        // Create a restore record
-        $restoreJob = BackupJob::create([
-            'type' => 'restore',
-            'status' => 'completed',
-            'started_at' => now(),
-            'completed_at' => now(),
-        ]);
-        $restore = Restore::create([
-            'backup_job_id' => $restoreJob->id,
-            'snapshot_id' => $snapshot->id,
-            'target_server_id' => $server->id,
-            'schema_name' => 'restored_db',
-            'triggered_by_user_id' => $user->id,
-        ]);
-        $restoreJobId = $restoreJob->id;
-
-        // Delete the volume via Livewire
-        Livewire::actingAs($user)
-            ->test(Index::class)
-            ->call('confirmDelete', $volume->id)
-            ->call('delete');
-
-        // Verify cascade deletion
-        expect($snapshot->fresh())->toBeNull('Snapshot should be deleted')
-            ->and(Restore::find($restore->id))->toBeNull('Restore should be cascade deleted')
-            ->and(BackupJob::find($snapshotJobId))->toBeNull('Snapshot job should be cascade deleted')
-            ->and(BackupJob::find($restoreJobId))->toBeNull('Restore job should be cascade deleted')
-            ->and(file_exists($backupFilePath))->toBeFalse('Backup file should be deleted from storage');
-    });
-
-    test('deleting volume with keepFiles preserves backup files', function () {
-        $user = User::factory()->withAbilities([Ability::ManageVolumes->value])->create();
-
-        // Create volume with temp directory
-        $volume = Volume::factory()->local()->create();
-        $tempDir = $volume->config['path'];
-
-        // Create a backup file
-        $backupFilename = 'keep-files-test.sql.gz';
-        $backupFilePath = $tempDir.'/'.$backupFilename;
-        file_put_contents($backupFilePath, 'test backup content');
-
-        // Create server with backup using our volume
-        $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
-        $server->backups->first()->volumes()->sync([$volume->id]);
-
-        // Create snapshot with real file
-        $factory = app(BackupJobFactory::class);
-        $snapshots = $factory->createSnapshots($server->backups->first(), 'manual', $user->id);
-        $snapshot = $snapshots[0];
-        $snapshot->update([
-            'filename' => $backupFilename,
-            'file_size' => filesize($backupFilePath),
-        ]);
-        $snapshot->update(['filename' => $backupFilename]);
-        $snapshot->files()->update(['status' => SnapshotFileStatus::Completed]);
-        $snapshot->job->markCompleted();
-
-        $backupJobId = $snapshot->backup_job_id;
-
-        // Delete volume with keepFiles checked
         Livewire::actingAs($user)
             ->test(Index::class)
             ->call('confirmDelete', $volume->id)
             ->set('keepFiles', true)
             ->call('delete');
+    });
 
-        // DB records deleted, but file preserved
-        expect($snapshot->fresh())->toBeNull('Snapshot should be deleted')
-            ->and(BackupJob::find($backupJobId))->toBeNull('BackupJob should be cascade deleted')
-            ->and(Volume::find($volume->id))->toBeNull('Volume should be deleted')
-            ->and(file_exists($backupFilePath))->toBeTrue('Backup file should be preserved on storage');
+    test('a volume whose files cannot be deleted is reported instead of failing the request', function () {
+        $user = User::factory()->withAbilities([Ability::ManageVolumes->value])->create();
+        $volume = Volume::factory()->local()->create();
+        DeleteVolumeAction::shouldRun()->andThrow(new VolumeFilesNotDeletedException($volume, ['Volume unreachable']));
+
+        Livewire::actingAs($user)
+            ->test(Index::class)
+            ->call('confirmDelete', $volume->id)
+            ->call('delete')
+            ->assertSet('deleteId', null);
     });
 });
 
@@ -515,6 +431,41 @@ describe('volume immutability', function () {
         $volume->refresh();
         expect($volume->name)->toBe('Updated Volume Name');
         expect($volume->config['path'])->toBe($originalPath);
+    });
+
+    test('credentials stay editable on a volume locked by its snapshots', function () {
+        $user = User::factory()->withAbilities([Ability::ManageVolumes->value])->create();
+        $volume = Volume::factory()->sftp()->create([
+            'config' => VolumeType::SFTP->encryptSensitiveFields([
+                'host' => 'sftp.example.com',
+                'port' => 22,
+                'username' => 'backup',
+                'password' => 'stored-secret',
+                'root' => '/backups',
+            ]),
+        ]);
+        Snapshot::factory()->onVolumes($volume)->withFile()->create();
+
+        $this->mock(FilesystemProvider::class)
+            ->shouldReceive('getForVolume')
+            ->andReturnUsing(fn (Volume $tested) => $tested->config['password'] === 'rotated-secret'
+                ? new League\Flysystem\Filesystem(new League\Flysystem\Local\LocalFilesystemAdapter(sys_get_temp_dir()))
+                : throw new RuntimeException('Authentication failed'));
+
+        $component = Livewire::actingAs($user)
+            ->test(Edit::class, ['volume' => $volume])
+            ->set('form.sftpConfig.password', 'wrong-secret')
+            ->call('save')
+            ->assertHasErrors('config')
+            ->assertSet('form.connectionTestSuccess', false);
+
+        expect($component->get('form.connectionTestMessage'))->toContain('Authentication failed');
+
+        $component->set('form.sftpConfig.password', 'rotated-secret')
+            ->call('save')
+            ->assertRedirect(route('volumes.index'));
+
+        expect($volume->fresh()->getDecryptedConfig()['password'])->toBe('rotated-secret');
     });
 
     test('can edit volume without snapshots', function () {

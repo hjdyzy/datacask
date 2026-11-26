@@ -2,10 +2,15 @@
 
 namespace App\Jobs;
 
+use App\Actions\Backup\CompleteBackupAction;
+use App\Actions\Backup\FailBackupAction;
+use App\Actions\Backup\RecordBackupResultAction;
 use App\Enums\BackupJobStatus;
 use App\Enums\SnapshotFileStatus;
+use App\Exceptions\Backup\JobCancelledException;
 use App\Exceptions\Backup\VolumeTransferException;
 use App\Facades\AppConfig;
+use App\Models\Backup;
 use App\Models\BackupJob;
 use App\Models\Snapshot;
 use App\Models\SnapshotFile;
@@ -14,7 +19,6 @@ use App\Services\Backup\DTO\BackupConfig;
 use App\Services\Backup\DTO\BackupResult;
 use App\Services\Backup\DTO\DatabaseConnectionConfig;
 use App\Services\Backup\DTO\VolumeConfig;
-use App\Services\NotificationService;
 use App\Support\FilesystemSupport;
 use App\Support\QueueTimeouts;
 use Illuminate\Bus\Queueable;
@@ -63,9 +67,19 @@ class ProcessBackupJob implements ShouldQueue
     }
 
     /**
-     * Execute the job.
+     * Execute the job. A cancelled job ends here, wherever its runner was:
+     * it is neither retried nor reported as failed.
      */
     public function handle(BackupTask $backupTask): void
+    {
+        try {
+            $this->process($backupTask);
+        } catch (JobCancelledException) {
+            Log::info('Backup cancelled', ['snapshot_id' => $this->snapshotId]);
+        }
+    }
+
+    private function process(BackupTask $backupTask): void
     {
         $snapshot = Snapshot::with(['job', 'files.volume', 'backup', 'databaseServer.sshConfig'])->findOrFail($this->snapshotId);
         $databaseServer = $snapshot->databaseServer;
@@ -81,49 +95,15 @@ class ProcessBackupJob implements ShouldQueue
             $attemptInfo = $this->job ? " (attempt {$this->attempts()}/{$this->tries})" : '';
             $job->log("Starting backup for database: {$snapshot->database_name}{$attemptInfo}", 'info');
 
-            // Snapshot::$backup may be null for orphaned snapshots (their
-            // backup config was removed after the snapshot was taken).
-            $backupPath = $snapshot->backup instanceof \App\Models\Backup
-                ? ($snapshot->backup->path ?? '')
-                : '';
-
-            // The snapshot's own file rows are the source of truth for the
-            // run's targets. On a retry, copies that already uploaded
-            // successfully are skipped instead of re-uploaded.
-            $targetFiles = $snapshot->files->filter(
-                fn (SnapshotFile $file) => $file->status !== SnapshotFileStatus::Completed,
-            )->whenEmpty(fn () => $snapshot->files);
-
-            $config = new BackupConfig(
-                database: DatabaseConnectionConfig::fromServer($databaseServer),
-                volumes: array_values($targetFiles->map(
-                    fn (SnapshotFile $file) => VolumeConfig::fromVolume($file->volume, $file->volume->usedStorageBytes()),
-                )->all()),
-                databaseName: $snapshot->database_name,
-                workingDirectory: FilesystemSupport::createWorkingDirectory('backup', $snapshot->id),
-                backupPath: $backupPath,
-                postBackupScript: AppConfig::get('backup.post_backup_script'),
-            );
-
-            $result = $backupTask->execute($config, $job);
-
+            $result = $this->runBackup($backupTask, $snapshot, $job);
             if ($job->fresh()?->status !== BackupJobStatus::Running) {
                 return;
             }
 
-            $this->persistResult($snapshot, $result);
-
-            if (! $job->markCompleted()) {
-                return;
+            if ($result !== null) {
+                RecordBackupResultAction::run($snapshot, $result);
             }
-
-            app(NotificationService::class)->notifyBackupSuccess($snapshot);
-
-            // Notify-only storage limit: the backup was uploaded despite
-            // exceeding a volume's limit, so alert every configured channel.
-            foreach ($result->storageWarnings() as $warning) {
-                app(NotificationService::class)->notifyStorageLimitWarning($snapshot, $warning->storageWarning ?? '', $warning->volumeName);
-            }
+            CompleteBackupAction::run($snapshot);
 
             Log::info('Backup completed successfully', [
                 'snapshot_id' => $this->snapshotId,
@@ -133,7 +113,7 @@ class ProcessBackupJob implements ShouldQueue
         } catch (VolumeTransferException $e) {
             // At least one upload failed. The successful copies are still
             // recorded so their files stay tracked, then the job is failed.
-            $this->persistResult($snapshot, $e->result);
+            RecordBackupResultAction::run($snapshot, $e->result);
 
             $this->recordFailure($job, $e, [
                 'exception' => get_class($e),
@@ -161,38 +141,44 @@ class ProcessBackupJob implements ShouldQueue
         }
     }
 
-    /**
-     * Persist the archive fields and per-volume upload outcomes onto the
-     * snapshot and its copy rows.
-     */
-    private function persistResult(Snapshot $snapshot, BackupResult $result): void
+    private function runBackup(BackupTask $backupTask, Snapshot $snapshot, BackupJob $job): ?BackupResult
     {
-        $snapshot->update([
-            'filename' => $result->filename,
-            'file_size' => $result->fileSize,
-            'checksum' => $result->checksum,
-        ]);
+        $existingCopy = $snapshot->files->firstWhere('status', SnapshotFileStatus::Completed);
+        $targetFiles = $snapshot->files->reject(
+            fn (SnapshotFile $file) => $file->status === SnapshotFileStatus::Completed,
+        );
 
-        foreach ($result->volumeResults as $volumeResult) {
-            $file = $snapshot->files->firstWhere('volume_id', $volumeResult->volumeId);
-            if ($file === null) {
-                continue;
-            }
-
-            if ($volumeResult->status === SnapshotFileStatus::Completed) {
-                $file->update([
-                    'status' => SnapshotFileStatus::Completed,
-                    'file_exists' => true,
-                    'file_verified_at' => now(),
-                    'error' => null,
-                ]);
-            } else {
-                $file->update([
-                    'status' => SnapshotFileStatus::Failed,
-                    'error' => $volumeResult->error,
-                ]);
-            }
+        if ($existingCopy !== null && $targetFiles->isEmpty()) {
+            return null;
         }
+
+        if ($existingCopy !== null && blank($snapshot->filename)) {
+            throw new \RuntimeException('The uploaded backup copy has no recorded archive name.');
+        }
+
+        $config = new BackupConfig(
+            database: DatabaseConnectionConfig::fromServer($snapshot->databaseServer),
+            volumes: array_values($targetFiles->map(
+                fn (SnapshotFile $file) => VolumeConfig::fromVolume($file->volume, $file->volume->usedStorageBytes()),
+            )->all()),
+            databaseName: $snapshot->database_name,
+            workingDirectory: FilesystemSupport::createWorkingDirectory('backup', $snapshot->id),
+            backupPath: $snapshot->backup->path ?? '',
+            postBackupScript: AppConfig::get('backup.post_backup_script'),
+            excludedTables: Backup::parseExcludedTables($snapshot->backup?->excluded_tables),
+        );
+
+        if ($existingCopy === null) {
+            return $backupTask->execute($config, $job);
+        }
+
+        // Every copy must reference the archive already recorded on the snapshot.
+        return $backupTask->retryUploads(
+            $config,
+            $job,
+            VolumeConfig::fromVolume($existingCopy->volume),
+            new BackupResult($snapshot->filename, $snapshot->file_size, $snapshot->checksum),
+        );
     }
 
     /**
@@ -205,7 +191,7 @@ class ProcessBackupJob implements ShouldQueue
     {
         $job->log("Backup failed: {$exception->getMessage()}", 'error', $context);
 
-        if ($this->job === null || $this->attempts() >= $this->tries) {
+        if ($this->job === null && $job->status->isInProgress()) {
             $job->markFailed($exception);
         }
     }
@@ -215,20 +201,22 @@ class ProcessBackupJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        $snapshot = Snapshot::with(['databaseServer'])->find($this->snapshotId);
+        $snapshot = Snapshot::with(['job', 'databaseServer'])->find($this->snapshotId);
+
         if ($snapshot === null) {
             return;
         }
 
-        $job = $snapshot->job;
-        if ($job->status !== BackupJobStatus::Completed && $job->status !== BackupJobStatus::Failed) {
-            $job->log("Backup failed: {$exception->getMessage()}", 'error', [
-                'exception' => get_class($exception),
-                'source' => 'queue_failed_callback',
-            ]);
-            $job->markFailed($exception);
-        }
+        try {
+            // A worker killed on timeout never reached its own catch, so the
+            // job is still running and its log does not say why it stopped.
+            if ($snapshot->job->status->isInProgress()) {
+                $snapshot->job->log("Backup failed: {$exception->getMessage()}", 'error');
+            }
 
-        app(NotificationService::class)->notifyBackupFailed($snapshot, $exception);
+            FailBackupAction::run($snapshot, $exception);
+        } catch (JobCancelledException) {
+            // Cancelled meanwhile: nothing to conclude or notify.
+        }
     }
 }

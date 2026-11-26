@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Actions\Volume\CreateVolumeAction;
+use App\Actions\Volume\DeleteVolumeAction;
 use App\Enums\VolumeType;
+use App\Exceptions\Volume\VolumeFilesNotDeletedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Volume\StoreFtpVolumeRequest;
+use App\Http\Requests\Api\V1\Volume\StoreGdriveVolumeRequest;
 use App\Http\Requests\Api\V1\Volume\StoreLocalVolumeRequest;
 use App\Http\Requests\Api\V1\Volume\StoreS3VolumeRequest;
 use App\Http\Requests\Api\V1\Volume\StoreSftpVolumeRequest;
@@ -19,6 +23,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @tags Volumes
@@ -32,7 +37,7 @@ class VolumeController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $perPage = min($request->integer('per_page', 15), 100);
+        $perPage = $this->perPage($request);
 
         $volumes = VolumeQuery::make()->paginate($perPage);
 
@@ -88,6 +93,16 @@ class VolumeController extends Controller
     }
 
     /**
+     * Create a Google Drive volume.
+     *
+     * @response 201
+     */
+    public function storeGdrive(StoreGdriveVolumeRequest $request): JsonResponse
+    {
+        return $this->createVolume($request);
+    }
+
+    /**
      * Test connection.
      *
      * Tests the connection to the specified volume by writing and reading a test file.
@@ -102,13 +117,22 @@ class VolumeController extends Controller
     /**
      * Delete a volume.
      *
+     * A volume whose backup files cannot all be deleted from its storage is
+     * kept, with its snapshots.
+     *
      * @response 204
      */
     public function destroy(Volume $volume): Response
     {
         $this->authorize('delete', $volume);
 
-        $volume->delete();
+        try {
+            DeleteVolumeAction::run($volume);
+        } catch (VolumeFilesNotDeletedException $e) {
+            Log::warning($e->getMessage(), ['volume_id' => $volume->id, 'errors' => $e->errors]);
+
+            abort(409, 'The volume was kept because some backup files could not be deleted from it.');
+        }
 
         return response()->noContent();
     }
@@ -118,12 +142,13 @@ class VolumeController extends Controller
         $this->authorize('create', Volume::class);
 
         $validated = $request->validated();
-        $volumeType = VolumeType::from($validated['type']);
 
-        $validated['config'] = $volumeType->encryptSensitiveFields($validated['config']);
-        $validated['organization_id'] = app(CurrentOrganization::class)->id();
-
-        $volume = Volume::create($validated);
+        $volume = CreateVolumeAction::run(
+            app(CurrentOrganization::class)->model(),
+            VolumeType::from($validated['type']),
+            $validated['name'],
+            $validated['config'],
+        );
 
         return new VolumeResource($volume)
             ->response()

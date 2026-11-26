@@ -6,15 +6,13 @@ use App\Queries\SnapshotQuery;
 use App\Services\Backup\BackupJobFactory;
 
 test('can search snapshots by database name', function () {
-    $factory = app(BackupJobFactory::class);
-
     $server = DatabaseServer::factory()->create(['database_names' => ['production_db']]);
-    $snapshots = $factory->createSnapshots($server->backups->first(), 'manual');
-    $snapshots[0]->update(['database_name' => 'production_db']);
+    $snapshot = pendingSnapshot($server);
+    $snapshot->update(['database_name' => 'production_db']);
 
     $server2 = DatabaseServer::factory()->create(['database_names' => ['staging_db']]);
-    $snapshots2 = $factory->createSnapshots($server2->backups->first(), 'manual');
-    $snapshots2[0]->update(['database_name' => 'staging_db']);
+    $snapshot2 = pendingSnapshot($server2);
+    $snapshot2->update(['database_name' => 'staging_db']);
 
     $results = SnapshotQuery::buildFromParams(search: 'production')->get();
 
@@ -37,16 +35,29 @@ test('can search snapshots by server name', function () {
         ->and($results->first()->databaseServer->name)->toBe('MySQL Production');
 });
 
-test('can filter snapshots by status', function () {
-    $factory = app(BackupJobFactory::class);
+test('can search snapshots by comment', function () {
+    $server = DatabaseServer::factory()->create(['database_names' => ['db1', 'db2']]);
 
+    $needle = pendingSnapshot($server);
+    $needle->update(['database_name' => 'db1', 'comment' => 'Before upgrading to 1.37']);
+
+    $other = pendingSnapshot($server);
+    $other->update(['database_name' => 'db2', 'comment' => 'Routine weekly backup']);
+
+    $results = SnapshotQuery::buildFromParams(search: 'upgrading')->get();
+
+    expect($results)->toHaveCount(1)
+        ->and($results->first()->id)->toBe($needle->id);
+});
+
+test('can filter snapshots by status', function () {
     $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
 
-    $completedSnapshots = $factory->createSnapshots($server->backups->first(), 'manual');
-    $completedSnapshots[0]->job->update(['status' => 'completed']);
+    $completedSnapshot = pendingSnapshot($server);
+    $completedSnapshot->job->update(['status' => 'completed']);
 
-    $failedSnapshots = $factory->createSnapshots($server->backups->first(), 'manual');
-    $failedSnapshots[0]->job->update(['status' => 'failed']);
+    $failedSnapshot = pendingSnapshot($server);
+    $failedSnapshot->job->update(['status' => 'failed']);
 
     $results = SnapshotQuery::buildFromParams(statusFilter: 'completed')->get();
 
@@ -55,14 +66,12 @@ test('can filter snapshots by status', function () {
 });
 
 test('can sort snapshots by column', function () {
-    $factory = app(BackupJobFactory::class);
-
     $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
 
-    $snapshot1 = $factory->createSnapshots($server->backups->first(), 'manual')[0];
+    $snapshot1 = pendingSnapshot($server);
     $snapshot1->update(['file_size' => 1000]);
 
-    $snapshot2 = $factory->createSnapshots($server->backups->first(), 'manual')[0];
+    $snapshot2 = pendingSnapshot($server);
     $snapshot2->update(['file_size' => 5000]);
 
     $results = SnapshotQuery::buildFromParams(
@@ -72,6 +81,20 @@ test('can sort snapshots by column', function () {
 
     expect($results->first()->file_size)->toBe(5000)
         ->and($results->last()->file_size)->toBe(1000);
+});
+
+test('can sort snapshots by job duration', function () {
+    $server = DatabaseServer::factory()->create(['database_names' => ['test_db']]);
+
+    $slow = pendingSnapshot($server);
+    $slow->job->update(['duration_ms' => 90000]);
+
+    $fast = pendingSnapshot($server);
+    $fast->job->update(['duration_ms' => 1500]);
+
+    $results = SnapshotQuery::buildFromParams(sortColumn: 'duration_ms', sortDirection: 'asc')->get();
+
+    expect($results->pluck('id')->all())->toBe([$fast->id, $slow->id]);
 });
 
 test('snapshot listing does not load the job log payload', function () {

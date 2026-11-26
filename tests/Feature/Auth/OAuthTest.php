@@ -36,6 +36,9 @@ beforeEach(function () {
     Config::set('oauth.providers.github.enabled', true);
     Config::set('oauth.auto_link_by_email', true);
     Config::set('oauth.auto_create_users', true);
+    Config::set('oauth.providers.google.auto_create_users', null);
+    Config::set('oauth.providers.github.auto_create_users', null);
+    Config::set('oauth.providers.gitlab.auto_create_users', null);
     Config::set('oauth.default_role', 'member');
     Config::set('oauth.role_mapping.claim', 'groups');
     Config::set('oauth.role_mapping.admin', '');
@@ -92,7 +95,7 @@ test('oauth callback creates new user when email not found', function () {
         ->and($identity->email)->toBe('newuser@example.com');
 });
 
-test('oauth callback links to existing user by email and clears password', function () {
+test('oauth callback links to existing user by email and keeps their password', function () {
     $existingUser = User::factory()->create([
         'email' => 'existing@example.com',
         'role' => 'admin',
@@ -118,7 +121,7 @@ test('oauth callback links to existing user by email and clears password', funct
     $existingUser->refresh();
     expect($existingUser->oauthIdentities)->toHaveCount(1)
         ->and($existingUser->roleNameIn(\App\Models\Organization::default()))->toBe('admin') // unchanged
-        ->and($existingUser->password)->toBeNull(); // cleared to enforce OAuth-only login
+        ->and($existingUser->password)->not->toBeNull();
 });
 
 test('oauth callback logs in returning oauth user', function () {
@@ -180,6 +183,25 @@ test('oauth callback fails when auto-create is disabled and no matching user', f
     expect(User::where('email', 'unknown@example.com')->exists())->toBeFalse();
 });
 
+test('public providers only create users when explicitly allowed', function (string $provider, bool $created) {
+    Config::set('oauth', require config_path('oauth.php'));
+    Config::set("oauth.providers.{$provider}.enabled", true);
+    if ($provider === 'oidc') {
+        enableOidcProvider();
+    }
+
+    Socialite::fake($provider, fakeOidcUser("{$provider}-new", 'new@example.com'));
+
+    $this->get(route('oauth.callback', $provider));
+
+    expect(User::where('email', 'new@example.com')->exists())->toBe($created);
+})->with([
+    'google' => ['google', false],
+    'github' => ['github', false],
+    'gitlab.com' => ['gitlab', false],
+    'oidc' => ['oidc', true],
+]);
+
 test('oauth callback fails when email is not provided', function () {
     Socialite::fake('github', (new SocialiteUser)->map([
         'id' => 'github-noemail',
@@ -219,6 +241,47 @@ test('oauth callback does not link by email when auto-link is disabled', functio
     $existingUser->refresh();
     expect($existingUser->oauthIdentities)->toHaveCount(0);
 });
+
+test('oidc does not link by email when the idp has not verified it', function (array $claims, bool $trustMissingClaim, string $error) {
+    enableOidcProvider();
+    Config::set('oauth.providers.oidc.trust_email_without_verified_claim', $trustMissingClaim);
+
+    $existingUser = User::factory()->create(['email' => 'victim@example.com']);
+
+    $socialiteUser = fakeOidcUser('attacker-sub', 'victim@example.com');
+    $socialiteUser->setRaw([...$socialiteUser->getRaw(), ...$claims]);
+    Socialite::fake('oidc', $socialiteUser);
+
+    $response = $this->get(route('oauth.callback', 'oidc'));
+
+    $response->assertRedirect(route('login'));
+    $response->assertSessionHas('error', fn (string $message) => str_contains($message, $error));
+    $this->assertGuest();
+    expect($existingUser->refresh()->oauthIdentities)->toHaveCount(0);
+})->with([
+    'claim missing' => [[], false, 'OAUTH_OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM=true'],
+    'claim false' => [['email_verified' => false], false, 'reports this email address as unverified'],
+    'claim false, missing claim trusted' => [['email_verified' => false], true, 'reports this email address as unverified'],
+]);
+
+test('oidc links to existing user by email when the idp verified it', function (array $claims, bool $trustMissingClaim) {
+    enableOidcProvider();
+    Config::set('oauth.providers.oidc.trust_email_without_verified_claim', $trustMissingClaim);
+
+    $existingUser = User::factory()->create(['email' => 'verified@example.com']);
+
+    $socialiteUser = fakeOidcUser('oidc-verified', 'verified@example.com');
+    $socialiteUser->setRaw([...$socialiteUser->getRaw(), ...$claims]);
+    Socialite::fake('oidc', $socialiteUser);
+
+    $this->get(route('oauth.callback', 'oidc'))->assertRedirect(route('dashboard'));
+
+    expect($existingUser->refresh()->oauthIdentities)->toHaveCount(1);
+})->with([
+    'claim true' => [['email_verified' => true], false],
+    'claim as string' => [['email_verified' => 'true'], false],
+    'claim missing, trusted' => [[], true],
+]);
 
 test('user can have multiple oauth providers linked', function () {
     $user = User::factory()->create(['email' => 'multi@example.com']);

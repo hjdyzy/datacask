@@ -17,7 +17,7 @@
                 name="email"
                 error-field="email"
                 :value="old('email')"
-                label="{{ __('Email Address') }}"
+                :label="__('Email address')"
                 type="email"
                 required
                 autofocus
@@ -29,7 +29,7 @@
 
         <div class="space-x-1 rtl:space-x-reverse text-center text-sm">
             <span>{{ __('Or, return to') }}</span>
-            <a href="{{ route('login') }}" class="link link-primary" wire:navigate>{{ __('log in') }}</a>
+            <a href="{{ route('login') }}" class="link link-primary" wire:navigate>{{ __('Log in') }}</a>
         </div>
     </div>
 </x-layouts::auth>

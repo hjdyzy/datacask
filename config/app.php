@@ -134,9 +134,6 @@ return [
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
-    'has_deprecated_aws_env' => (bool) (env('AWS_REGION') || env('AWS_DEFAULT_REGION')),
-    'has_deprecated_backup_env' => (bool) env('BACKUP_WORKING_DIRECTORY'),
-
     'available_locales' => [
         'en' => 'English',
         'fr' => 'Français',
@@ -195,6 +192,8 @@ return [
     */
 
     'github_repo' => env('APP_REPOSITORY', 'https://github.com/hjdyzy/datacask'),
+    'documentation_url' => 'https://hjdyzy.github.io/datacask',
+    'update_check_enabled' => (bool) env('APP_UPDATE_CHECK_ENABLED', true),
     'documentation_url' => env('APP_DOCUMENTATION_URL', 'https://hjdyzy.github.io/datacask'),
 
     /*
@@ -236,5 +235,32 @@ return [
 
     'demo_mode' => env('DEMO_MODE', false),
     'demo_user_password' => env('DEMO_USER_PASSWORD', 'demo'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Analytics Snippet
+    |--------------------------------------------------------------------------
+    |
+    | Raw HTML added as-is to the <head> of every page, such as the tracking
+    | tag of Umami, Plausible or Google Analytics. Nothing is added when unset.
+    |
+    */
+
+    'analytics_snippet' => env('ANALYTICS_SNIPPET'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | TLS Verification
+    |--------------------------------------------------------------------------
+    |
+    | How certificates are checked on connections to OAuth providers and, in
+    | agent mode, to the Databasement server. TLS_CA_BUNDLE points to a PEM
+    | file to trust instead of the system CAs, for a private CA. TLS_VERIFY
+    | set to false skips verification entirely.
+    |
+    */
+
+    'tls_verify' => env('TLS_VERIFY', true),
+    'tls_ca_bundle' => env('TLS_CA_BUNDLE'),
 
 ];

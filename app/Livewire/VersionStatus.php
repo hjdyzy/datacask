@@ -38,7 +38,10 @@ class VersionStatus extends Component
     public function mount(): void
     {
         $this->getCurrentVersion();
-        $this->loadLatestRelease();
+
+        if (config('app.update_check_enabled')) {
+            $this->loadLatestRelease();
+        }
     }
 
     private function getCurrentVersion(): void

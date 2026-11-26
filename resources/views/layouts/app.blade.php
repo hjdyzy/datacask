@@ -8,6 +8,7 @@
     <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ asset('apple-touch-icon.png') }}/">
     @include('layouts._theme-init')
+    {!! config('app.analytics_snippet') !!}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen font-sans antialiased bg-base-200">
@@ -55,7 +56,7 @@
                 @can('viewAny', \App\Models\User::class)
                     <x-menu-item title="{{ __('Users') }}" icon="o-users" link="{{ route('users.index') }}" wire:navigate />
                 @endcan
-                <x-menu-item :title="__('Agents')" icon="o-cpu-chip" :link="route('agents.index')" wire:navigate />
+                <livewire:menu.agents-menu-item />
                 <x-menu-separator />
                 <x-menu-item :title="__('Configuration')" icon="o-cog-6-tooth" :link="route('configuration.application')" wire:navigate />
                 <x-menu-item :title="__('Changelog')" icon="o-newspaper" :link="route('changelog')" wire:navigate />

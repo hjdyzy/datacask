@@ -16,7 +16,7 @@ Datacask 统一管理数据库实例、备份计划、备份文件和恢复任�
 - 每个数据库生成独立备份，便于检索、下载和恢复。
 - 支持压缩、加密、完整性校验、失败通知和操作审计。
 - 支持恢复到原实例或兼容的其他实例。
-- 支持本地磁盘、MinIO/S3、Azure Blob、Samba、SFTP 和 FTP。
+- 支持本地磁盘、MinIO/S3、Azure Blob、Google Drive、Samba、SFTP 和 FTP。
 - 支持组织、成员和权限管理，以及 SSH 隧道连接。
 - 默认提供简体中文界面，并支持多语言切换。
 
@@ -35,7 +35,7 @@ Datacask 基于 [Databasement](https://github.com/David-Crty/databasement) 持�
 
 ## MySQL 支持
 
-MySQL 和 MariaDB 使用逻辑全量备份，可按全部数据库、指定数据库或名称模式创建计划。
+MySQL 和 MariaDB 使用逻辑全量备份，可按全部数据库、指定数据库、名称模式或排除列表创建计划。
 Datacask 不提供 binlog 增量备份、时间点恢复或主从复制管理；这类能力应由 MySQL 专用方案承担。
 
 ## 部署
@@ -47,6 +47,7 @@ registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest
 ```
 
 完整安装、升级和回滚步骤见 [生产部署指南](deploy/README.md)。
+从 `1.9` 或更早版本升级到 `1.10` 时，请先阅读 [容器用户与文件权限迁移说明](docs/docs/self-hosting/migrate-to-1-10.md)。
 
 ## 开发
 

@@ -2,25 +2,20 @@
 
 namespace App\Services\Backup;
 
+use App\Actions\Backup\DispatchBackupAction;
 use App\Enums\BackupJobStatus;
 use App\Enums\DatabaseSelectionMode;
-use App\Jobs\ProcessBackupJob;
-use App\Models\AgentJob;
 use App\Models\Backup;
 use App\Models\DatabaseServer;
 use App\Models\Snapshot;
 use App\Models\User;
-use App\Services\Agent\AgentJobPayloadBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 class RetryFailedSnapshotAction
 {
-    public function __construct(
-        private BackupJobFactory $factory,
-        private AgentJobPayloadBuilder $payloadBuilder,
-    ) {}
+    public function __construct(private BackupJobFactory $factory) {}
 
     public function execute(Snapshot $source, ?int $triggeredByUserId = null): Snapshot
     {
@@ -48,22 +43,10 @@ class RetryFailedSnapshotAction
                 ]);
             }
 
-            if ($backup->databaseServer->agent_id) {
-                AgentJob::create([
-                    'type' => AgentJob::TYPE_BACKUP,
-                    'database_server_id' => $backup->database_server_id,
-                    'snapshot_id' => $retry->id,
-                    'status' => AgentJob::STATUS_PENDING,
-                    'payload' => $this->payloadBuilder->build($retry),
-                ]);
-            }
-
             return $retry;
         });
 
-        if (! $retry->databaseServer->agent_id) {
-            ProcessBackupJob::dispatch($retry->id);
-        }
+        DispatchBackupAction::run($retry);
 
         return $retry;
     }

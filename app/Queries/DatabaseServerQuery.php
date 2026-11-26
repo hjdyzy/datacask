@@ -50,13 +50,14 @@ class DatabaseServerQuery
      */
     public static function buildFromParams(
         ?string $search = null,
+        ?string $dbTypeFilter = null,
         string $sortColumn = 'created_at',
         string $sortDirection = 'desc'
     ): Builder {
         $sortColumn = Formatters::sortColumn($sortColumn, self::ALLOWED_SORT_COLUMNS);
 
         return DatabaseServer::query()
-            ->with(['backups.volumes', 'backups.backupSchedule', 'sshConfig', 'notificationChannels'])
+            ->with(['backups.volumes', 'backups.backupSchedule', 'sshConfig', 'agent', 'notificationChannels'])
             ->withCount(['snapshots' => function (Builder $q) {
                 /** @var Builder<Snapshot> $q */
                 return $q->completed();
@@ -72,6 +73,9 @@ class DatabaseServerQuery
                         ->orWhere('database_type', 'like', "%{$search}%")
                         ->orWhere('description', 'like', "%{$search}%");
                 });
+            })
+            ->when($dbTypeFilter, function (Builder $query) use ($dbTypeFilter) {
+                $query->whereRaw('database_type = ?', [$dbTypeFilter]);
             })
             ->orderBy($sortColumn, Formatters::sortDirection($sortDirection));
     }

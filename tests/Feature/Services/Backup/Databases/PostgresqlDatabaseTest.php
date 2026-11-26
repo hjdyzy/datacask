@@ -32,11 +32,12 @@ beforeEach(function () {
     $this->db = postgresHandler();
 });
 
-test('dump builds correct pg_dump command', function () {
+test('dump builds a pg_dump command that streams to stdout', function () {
     $result = $this->db->dump('/tmp/dump.sql');
 
     expect($result)->toBeInstanceOf(DatabaseOperationResult::class)
-        ->and($result->command)->toBe("PGPASSWORD='pg_secret' pg_dump --clean --if-exists --no-owner --no-privileges --quote-all-identifiers --host='pg.local' --port='5432' --username='postgres' 'myapp' -f '/tmp/dump.sql'");
+        ->and($result->command)->toBe("PGPASSWORD='pg_secret' pg_dump --clean --if-exists --no-owner --no-privileges --quote-all-identifiers --host='pg.local' --port='5432' --username='postgres' --dbname='myapp'")
+        ->and($result->writesToStdout)->toBeTrue();
 });
 
 test('dump includes extra dump flags', function () {
@@ -45,15 +46,48 @@ test('dump includes extra dump flags', function () {
     $result = $db->dump('/tmp/dump.sql');
 
     // Flags must appear before the database name (last positional argument)
-    expect($result->command)->toContain("'--exclude-table=large_logs' 'myapp'")
-        ->and($result->command)->toEndWith("-f '/tmp/dump.sql'");
+    expect($result->command)->toContain("'--exclude-table=large_logs' --dbname='myapp'")
+        ->and($result->command)->toEndWith("--dbname='myapp'");
 });
+
+test('dump excludes tables from every schema of the dumped database', function () {
+    $db = new PostgresqlDatabase;
+    $db->setConfig([
+        'host' => 'pg.local',
+        'port' => 5432,
+        'user' => 'postgres',
+        'pass' => 'pg_secret',
+        'database' => 'myapp',
+        'excluded_tables' => ['web_api_log', 'WebServiceLog'],
+    ]);
+
+    // Unqualified patterns match the table in any schema; quoted so pg_dump keeps the case
+    expect($db->dump('/tmp/dump.sql')->command)
+        ->toContain("'--exclude-table-and-children=\"web_api_log\"' '--exclude-table-and-children=\"WebServiceLog\"' --dbname='myapp'");
+});
+
+test('dump adds no exclude-table flags when excluded tables are absent or empty', function (mixed $excluded) {
+    $db = new PostgresqlDatabase;
+    $db->setConfig(array_merge([
+        'host' => 'pg.local',
+        'port' => 5432,
+        'user' => 'postgres',
+        'pass' => 'pg_secret',
+        'database' => 'myapp',
+    ], $excluded === 'absent' ? [] : ['excluded_tables' => $excluded]));
+
+    expect($db->dump('/tmp/dump.sql')->command)->not->toContain('--exclude-table');
+})->with([
+    'absent' => 'absent',
+    'empty list' => [[]],
+    'null' => [null],
+]);
 
 test('restore builds correct psql command', function () {
     $result = $this->db->restore('/tmp/restore.sql');
 
     expect($result)->toBeInstanceOf(DatabaseOperationResult::class)
-        ->and($result->command)->toBe("PGPASSWORD='pg_secret' psql --set=ON_ERROR_STOP=1 --host='pg.local' --port='5432' --username='postgres' 'myapp' -f '/tmp/restore.sql'");
+        ->and($result->command)->toBe("PGPASSWORD='pg_secret' psql --set=ON_ERROR_STOP=1 --host='pg.local' --port='5432' --username='postgres' --dbname='myapp' -f '/tmp/restore.sql'");
 });
 
 test('plain restore stops on the first SQL error instead of exiting successfully', function () {
@@ -68,7 +102,7 @@ test('dump appends --format=custom when dump_format is custom', function () {
     $result = $db->dump('/tmp/dump.sql');
 
     expect($result->command)->toContain('--quote-all-identifiers --format=custom --host=')
-        ->and($result->command)->toEndWith("'myapp' -f '/tmp/dump.sql'");
+        ->and($result->command)->toEndWith("--dbname='myapp'");
 });
 
 test('restore uses pg_restore when dump_format config is custom', function () {
@@ -77,8 +111,17 @@ test('restore uses pg_restore when dump_format config is custom', function () {
     $result = $db->restore('/tmp/snapshot.sql');
 
     expect($result->command)->toBe(
-        "PGPASSWORD='pg_secret' pg_restore --clean --if-exists --no-owner --no-privileges --jobs=4 --host='pg.local' --port='5432' --username='postgres' --dbname='myapp' '/tmp/snapshot.sql'"
+        "PGPASSWORD='pg_secret' pg_restore --clean --if-exists --no-owner --no-privileges --host='pg.local' --port='5432' --username='postgres' --dbname='myapp' '/tmp/snapshot.sql'"
     );
+});
+
+// Serial by default: a parallel pg_restore loads the data of an extension's
+// tables (pgAgent's pga_job, pga_joblog) in any order, and CREATE EXTENSION has
+// already put their foreign keys in place (#635).
+test('custom format restore runs parallel jobs only when parallel_restore is requested', function () {
+    expect(postgresHandler(['dump_format' => 'custom'])->restore('/tmp/snapshot.sql')->command)->not->toContain('--jobs')
+        ->and(postgresHandler(['dump_format' => 'custom', 'parallel_restore' => true])->restore('/tmp/snapshot.sql')->command)
+        ->toContain('--no-privileges --jobs=4 --host=');
 });
 
 test('dump keeps ownership and privileges when dump_privileges is enabled', function () {
@@ -86,7 +129,7 @@ test('dump keeps ownership and privileges when dump_privileges is enabled', func
 
     $result = $db->dump('/tmp/dump.sql');
 
-    expect($result->command)->toBe("PGPASSWORD='pg_secret' pg_dump --clean --if-exists --quote-all-identifiers --host='pg.local' --port='5432' --username='postgres' 'myapp' -f '/tmp/dump.sql'");
+    expect($result->command)->toBe("PGPASSWORD='pg_secret' pg_dump --clean --if-exists --quote-all-identifiers --host='pg.local' --port='5432' --username='postgres' --dbname='myapp'");
 });
 
 test('custom format restore keeps ownership and privileges when dump_privileges is enabled', function () {
@@ -95,7 +138,7 @@ test('custom format restore keeps ownership and privileges when dump_privileges 
     $result = $db->restore('/tmp/snapshot.sql');
 
     expect($result->command)->toBe(
-        "PGPASSWORD='pg_secret' pg_restore --clean --if-exists --jobs=4 --host='pg.local' --port='5432' --username='postgres' --dbname='myapp' '/tmp/snapshot.sql'"
+        "PGPASSWORD='pg_secret' pg_restore --clean --if-exists --host='pg.local' --port='5432' --username='postgres' --dbname='myapp' '/tmp/snapshot.sql'"
     );
 });
 
@@ -233,7 +276,7 @@ test('prepareForRestore allows recreating a database other than the connection o
 });
 
 /** A handler whose connections are the given mocks, configured to restore as `databasement`. */
-function postgresHandlerConnectingWith(PDO $adminPdo, bool $dumpPrivileges): PostgresqlDatabase
+function postgresHandlerConnectingWith(PDO $adminPdo, bool $dumpPrivileges, array $config = []): PostgresqlDatabase
 {
     $db = Mockery::mock(PostgresqlDatabase::class)->makePartial()->shouldAllowMockingProtectedMethods();
     $db->shouldReceive('createPdo')->once()->andReturn($adminPdo);
@@ -241,23 +284,39 @@ function postgresHandlerConnectingWith(PDO $adminPdo, bool $dumpPrivileges): Pos
         'user' => 'databasement',
         'database' => 'restored_db',
         'dump_privileges' => $dumpPrivileges,
+        ...$config,
     ]));
 
     return $db;
 }
 
-test('ownership transfer hands the database over and reassigns what a portable restore created', function () {
+// REASSIGN OWNED BY after the restore failed outright when the server was
+// connected as its bootstrap superuser, which owns the system catalogs (#607).
+test('ownership transfer hands the database over and makes a portable restore run as the owner', function (?string $dumpFormat, string $expected) {
     $adminPdo = Mockery::mock(PDO::class);
     $adminPdo->shouldReceive('exec')->once()->with('ALTER DATABASE "restored_db" OWNER TO "webapp"');
 
-    $targetPdo = Mockery::mock(PDO::class);
-    $targetPdo->shouldReceive('exec')->once()->with('REASSIGN OWNED BY "databasement" TO "webapp"');
+    $db = postgresHandlerConnectingWith($adminPdo, dumpPrivileges: false, config: ['dump_format' => $dumpFormat]);
+    $db->transferOwnership('restored_db', 'webapp', new InMemoryBackupLogger);
+
+    expect($db->restore('/tmp/snapshot.sql')->command)->toContain($expected);
+})->with([
+    'plain format' => [null, "'restored_db' -c 'SET ROLE \"webapp\"' -f '/tmp/snapshot.sql'"],
+    'custom format' => ['custom', "--username='databasement' --role='webapp' --dbname='restored_db'"],
+]);
+
+test('ownership transfer refused for want of role membership says which GRANT is missing', function (string $refusal) {
+    $adminPdo = Mockery::mock(PDO::class);
+    $adminPdo->shouldReceive('exec')->andThrow(new PDOException($refusal));
 
     $db = postgresHandlerConnectingWith($adminPdo, dumpPrivileges: false);
-    $db->shouldReceive('createPdoForDatabase')->once()->with('restored_db')->andReturn($targetPdo);
 
-    $db->transferOwnership('restored_db', 'webapp', new InMemoryBackupLogger);
-});
+    expect(fn () => $db->transferOwnership('restored_db', 'webapp', new InMemoryBackupLogger))
+        ->toThrow(ConnectionException::class, 'GRANT "webapp" TO "databasement";');
+})->with([
+    'PostgreSQL 16+' => ['SQLSTATE[42501]: Insufficient privilege: 7 ERROR:  must be able to SET ROLE "webapp"'],
+    'PostgreSQL 15 and older' => ['SQLSTATE[42501]: Insufficient privilege: 7 ERROR:  must be member of role "webapp"'],
+]);
 
 // A privilege-preserving snapshot restores its objects under their original
 // owners, so only the database itself is left to hand over: pg_dump never
@@ -267,9 +326,9 @@ test('ownership transfer leaves the restored objects alone for a snapshot that c
     $adminPdo->shouldReceive('exec')->once()->with('ALTER DATABASE "restored_db" OWNER TO "webapp"');
 
     $db = postgresHandlerConnectingWith($adminPdo, dumpPrivileges: true);
-    $db->shouldNotReceive('createPdoForDatabase');
-
     $db->transferOwnership('restored_db', 'webapp', new InMemoryBackupLogger);
+
+    expect($db->restore('/tmp/snapshot.sql')->command)->not->toContain('ROLE');
 });
 
 /**

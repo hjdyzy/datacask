@@ -11,6 +11,7 @@ use App\Notifications\BackupSuccessNotification;
 use App\Notifications\ChannelNotifiable;
 use App\Notifications\Channels\DiscordWebhookChannel;
 use App\Notifications\Channels\GotifyChannel;
+use App\Notifications\Channels\PushPlusChannel;
 use App\Notifications\Channels\WebhookChannel;
 use App\Notifications\Channels\WeComChannel;
 use App\Notifications\NotificationMessage;
@@ -19,7 +20,13 @@ use App\Notifications\RestoreSuccessNotification;
 use App\Notifications\SnapshotsMissingNotification;
 use App\Services\Backup\BackupJobFactory;
 use App\Services\NotificationService;
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Exception\BadResponseException;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response as Psr7Response;
 use Illuminate\Http\Client\Request;
+use Illuminate\Notifications\Channels\SlackWebhookChannel;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Slack\SlackMessage;
 use Illuminate\Support\Facades\Http;
@@ -52,11 +59,10 @@ function notificationRestore(Snapshot $snapshot, DatabaseServer $server): Restor
         'started_at' => now(),
     ]);
 
-    return Restore::create([
+    return Restore::factory()->create([
         'backup_job_id' => $job->id,
         'snapshot_id' => $snapshot->id,
         'target_server_id' => $server->id,
-        'schema_name' => 'restored_db',
     ]);
 }
 
@@ -83,7 +89,7 @@ function sentChannelNotifications(string $notificationClass): \Illuminate\Suppor
 // --- Dispatch & trigger handling ---
 
 test('failure notification is sent with correct details', function (string $type) {
-    NotificationChannel::factory()->email()->create(['config' => ['to' => 'admin@example.com']]);
+    NotificationChannel::factory()->email()->create();
 
     $server = DatabaseServer::factory()->create([
         'name' => 'Production DB',
@@ -113,7 +119,7 @@ test('failure notification is sent with correct details', function (string $type
 })->with(['backup', 'restore']);
 
 test('success notification is sent with correct details', function (string $type) {
-    NotificationChannel::factory()->email()->create(['config' => ['to' => 'admin@example.com']]);
+    NotificationChannel::factory()->email()->create();
 
     $server = DatabaseServer::factory()->create([
         'name' => 'Production DB',
@@ -139,7 +145,7 @@ test('success notification is sent with correct details', function (string $type
 })->with(['backup', 'restore']);
 
 test('notification trigger controls which notifications are sent', function (string $trigger, string $event, bool $shouldSend) {
-    NotificationChannel::factory()->email()->create(['config' => ['to' => 'admin@example.com']]);
+    NotificationChannel::factory()->email()->create();
 
     $server = DatabaseServer::factory()->create([
         'database_names' => ['testdb'],
@@ -205,6 +211,7 @@ test('notification is sent to channel when configured', function (string $factor
     'telegram' => ['telegram', ['bot_token' => 'bot-token', 'chat_id' => '123456'], TelegramChannel::class, 'telegram'],
     'pushover' => ['pushover', ['token' => 'push-token', 'user_key' => 'user-key-123'], PushoverChannel::class, 'pushover'],
     'gotify' => ['gotify', ['url' => 'https://gotify.example.com', 'token' => 'app-token'], GotifyChannel::class, 'gotify'],
+    'pushplus' => ['pushplus', ['token' => 'pushplus-token'], PushPlusChannel::class, 'pushplus'],
     'discordWebhook' => ['discordWebhook', ['url' => 'https://discord.com/api/webhooks/123/abc'], DiscordWebhookChannel::class, 'discord_webhook'],
     'wecom' => ['wecom', ['webhook_url' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'], WeComChannel::class, 'wecom'],
     'webhook' => ['webhook', ['url' => 'https://webhook.example.com/hook', 'secret' => 'my-secret'], WebhookChannel::class, 'webhook'],
@@ -212,7 +219,7 @@ test('notification is sent to channel when configured', function (string $factor
 
 test('notification dispatch errors never escape the service', function () {
     Log::spy();
-    NotificationChannel::factory()->email()->create(['config' => ['to' => 'admin@example.com']]);
+    NotificationChannel::factory()->email()->create();
 
     // A snapshot with no databaseServer relation (e.g. server since deleted)
     // makes notifyServer fail before any channel send — that error must be
@@ -333,6 +340,7 @@ test('via method returns channels based on configured routes', function () {
         'telegram' => '123456',
         'pushover' => 'user-key-123',
         'gotify' => 'https://gotify.example.com',
+        'pushplus' => 'pushplus-token',
         'discord_webhook' => 'https://discord.com/api/webhooks/123/abc',
         'wecom' => 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key',
         'webhook' => 'https://webhook.example.com/hook',
@@ -344,6 +352,7 @@ test('via method returns channels based on configured routes', function () {
         TelegramChannel::class,
         PushoverChannel::class,
         GotifyChannel::class,
+        PushPlusChannel::class,
         DiscordWebhookChannel::class,
         WeComChannel::class,
         WebhookChannel::class,
@@ -449,6 +458,12 @@ test('failure message renders every channel with error details', function (Closu
             ->and($gotify['title'])->toContain('Backup Failed')
             ->and($gotify['message'])->toContain('Test error')
             ->and($gotify['priority'])->toBe(8);
+    }],
+    'pushplus' => [function (BackupFailedNotification $notification) {
+        $pushplus = $notification->toPushPlus((object) []);
+        expect($pushplus['title'])->toContain('Backup Failed')
+            ->and($pushplus['content'])->toContain('Test error')
+            ->and($pushplus['template'])->toBe('html');
     }],
     'discord_webhook' => [function (BackupFailedNotification $notification) {
         $payload = $notification->toDiscordWebhook((object) []);
@@ -571,8 +586,8 @@ test('custom channel sends HTTP request', function (string $channelClass, array 
     ],
 ]);
 
-test('custom channel throws on HTTP failure', function (string $channelClass, array $channelConfig) {
-    Http::fake(fn () => Http::response('Server Error', 500));
+test('custom channel throws on an error or redirect response', function (string $channelClass, array $channelConfig, int $status, array $headers) {
+    Http::fake(fn () => Http::response('', $status, $headers));
 
     $server = DatabaseServer::factory()->create(['name' => 'Test Server', 'database_names' => ['testdb']]);
     $snapshot = notificationSnapshot($server);
@@ -585,6 +600,8 @@ test('custom channel throws on HTTP failure', function (string $channelClass, ar
 
     expect(fn () => (new $channelClass)->send($notifiable, $notification))
         ->toThrow(\Illuminate\Http\Client\RequestException::class);
+
+    Http::assertSentCount(1);
 })->with([
     'gotify' => [
         GotifyChannel::class,
@@ -602,7 +619,63 @@ test('custom channel throws on HTTP failure', function (string $channelClass, ar
         WebhookChannel::class,
         ['url' => 'https://webhook.example.com/hook'],
     ],
+    'pushplus' => [
+        PushPlusChannel::class,
+        ['token' => 'pushplus-token'],
+    ],
+])->with([
+    'server error' => [500, []],
+    'redirect to instance metadata' => [302, ['Location' => 'http://169.254.169.254/latest/meta-data/']],
 ]);
+
+test('pushplus channel posts the message without a timestamp field', function () {
+    Http::fake([PushPlusChannel::ENDPOINT => Http::response(['code' => 200, 'msg' => '请求成功', 'data' => 'abc'])]);
+
+    $server = DatabaseServer::factory()->create(['name' => 'Test <Server>', 'database_names' => ['testdb']]);
+    $notification = new BackupFailedNotification(notificationSnapshot($server), new \Exception('Test error'));
+
+    (new PushPlusChannel)->send(new ChannelNotifiable(routes: [], channelConfig: ['token' => 'pushplus-token', 'channel' => 'app', 'topic' => '']), $notification);
+
+    Http::assertSent(fn (Request $request) => $request->url() === PushPlusChannel::ENDPOINT
+        && $request['token'] === 'pushplus-token'
+        && $request['channel'] === 'app'
+        && ! isset($request['topic'])
+        && ! isset($request['timestamp'])
+        && str_contains($request['content'], 'Test &lt;Server&gt;'));
+});
+
+test('pushplus channel throws when PushPlus rejects the message', function () {
+    Http::fake([PushPlusChannel::ENDPOINT => Http::response(['code' => 903, 'msg' => '无效的用户token', 'data' => null])]);
+
+    $server = DatabaseServer::factory()->create(['database_names' => ['testdb']]);
+    $notification = new BackupFailedNotification(notificationSnapshot($server), new \Exception('Test error'));
+
+    expect(fn () => (new PushPlusChannel)->send(new ChannelNotifiable(routes: [], channelConfig: ['token' => 'bad-token']), $notification))
+        ->toThrow(\RuntimeException::class, 'code 903');
+});
+
+test('pushplus channel keeps a topic of 0', function () {
+    Http::fake([PushPlusChannel::ENDPOINT => Http::response(['code' => 200])]);
+
+    $server = DatabaseServer::factory()->create(['database_names' => ['testdb']]);
+    $notification = new BackupFailedNotification(notificationSnapshot($server), new \Exception("Line one\nLine two"));
+
+    (new PushPlusChannel)->send(new ChannelNotifiable(routes: [], channelConfig: ['token' => 'pushplus-token', 'topic' => '0']), $notification);
+
+    Http::assertSent(fn (Request $request) => $request['topic'] === '0'
+        && str_contains($request['content'], 'Line one<br>'));
+});
+
+test('slack webhook channel fails on a redirect instead of following it', function () {
+    $redirectOptions = (fn () => $this->http)->call(app(SlackWebhookChannel::class))->getConfig('allow_redirects');
+
+    $handler = new MockHandler([new Psr7Response(302, ['Location' => 'http://169.254.169.254/latest/meta-data/'])]);
+    $client = new GuzzleClient(['handler' => HandlerStack::create($handler), 'allow_redirects' => $redirectOptions]);
+
+    expect(fn () => $client->post('https://hooks.slack.com/services/T/B/X'))
+        ->toThrow(BadResponseException::class)
+        ->and($handler->count())->toBe(0);
+});
 
 test('wecom channel throws when the API returns a non-zero error code', function () {
     Http::fake(fn () => Http::response(['errcode' => 40014, 'errmsg' => 'invalid webhook key']));
@@ -641,7 +714,7 @@ test('wecom markdown stays within the API byte limit and keeps the action link',
 // --- Job failure hooks ---
 
 test('failed jobs send a failure notification', function (string $type) {
-    NotificationChannel::factory()->email()->create(['config' => ['to' => 'admin@example.com']]);
+    NotificationChannel::factory()->email()->create();
 
     $server = DatabaseServer::factory()->create([
         'name' => 'Production MySQL',

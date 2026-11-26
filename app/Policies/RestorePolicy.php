@@ -34,7 +34,7 @@ class RestorePolicy
      */
     public function create(User $user): bool
     {
-        return $user->isDemo() || $user->can(Ability::OperateRestores->value);
+        return $this->canOperateRestores($user);
     }
 
     /**
@@ -44,7 +44,7 @@ class RestorePolicy
      */
     public function update(User $user, ScheduledRestore $restore): bool
     {
-        return $user->isDemo() || $user->can(Ability::OperateRestores->value);
+        return $this->canOperateRestores($user);
     }
 
     /**
@@ -52,7 +52,7 @@ class RestorePolicy
      */
     public function delete(User $user, Restore|ScheduledRestore $restore): bool
     {
-        return $user->isDemo() || $user->can(Ability::OperateRestores->value);
+        return $this->canOperateRestores($user);
     }
 
     /**
@@ -60,6 +60,14 @@ class RestorePolicy
      */
     public function run(User $user, ScheduledRestore $restore): bool
     {
-        return $user->isDemo() || $user->can(Ability::OperateRestores->value);
+        return $this->canOperateRestores($user);
+    }
+
+    /**
+     * The demo user runs restores without holding the ability.
+     */
+    private function canOperateRestores(User $user): bool
+    {
+        return $user->tokenCovers(Ability::OperateRestores->value) && ($user->isDemo() || $user->can(Ability::OperateRestores->value));
     }
 }

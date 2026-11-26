@@ -1,0 +1,16 @@
+services:
+  app:
+    volumes:
+      - type: bind
+        source: ${DATACASK_NFS_MOUNT_PATH:?Set DATACASK_NFS_MOUNT_PATH in .env}
+        target: /backups
+        bind:
+          create_host_path: false
+
+  worker:
+    volumes:
+      - type: bind
+        source: ${DATACASK_NFS_MOUNT_PATH:?Set DATACASK_NFS_MOUNT_PATH in .env}
+        target: /backups
+        bind:
+          create_host_path: false

@@ -1,17 +1,5 @@
 <div>
-    <x-header :title="__('Configuration')" separator>
-        <x-slot:subtitle>
-            {{ __('Manage backup schedules and operation settings.') }}
-        </x-slot:subtitle>
-    </x-header>
-
-    @include('livewire.configuration._tabs', ['active' => 'backup'])
-
-    @if($showDeprecatedBackupEnv)
-        <x-alert class="alert-warning mb-4" icon="o-exclamation-triangle" dismissible>
-            {{ __('Deprecated BACKUP_* environment variables detected. Backup settings are now configured in the UI. You can safely remove BACKUP_* variables from your environment.') }}
-        </x-alert>
-    @endif
+    <x-configuration-header active="backup" :subtitle="__('Manage backup schedules and operation settings.')" />
 
     <div class="grid gap-6">
         <!-- Backup Schedules -->
@@ -104,15 +92,7 @@
 
         <!-- Backup Configuration (editable) -->
         <x-card shadow class="min-w-0">
-            <x-card-heading :title="__('Backup')" :subtitle="__('Backup and restore operation settings.')">
-                <x-button
-                    :label="__('Documentation')"
-                    icon="o-book-open"
-                    link="{{ config('app.documentation_url') }}/self-hosting/configuration/backup"
-                    external
-                    class="btn-ghost btn-sm"
-                />
-            </x-card-heading>
+            <x-card-heading :title="__('Backup')" :subtitle="__('Backup and restore operation settings.')" docs="self-hosting/configuration/backup" />
 
             <form wire:submit="saveBackupConfig">
                 <div class="divide-y divide-base-200/80">
@@ -124,8 +104,7 @@
                         <x-slot:description>
                             {{ __('Compression algorithm used for backup files.') }}
                             @if ($form->compression === 'encrypted')
-                                {{ __('To customise the encryption key, check the') }}
-                                <a href="{{ config('app.documentation_url') }}/self-hosting/configuration/backup" target="_blank" class="link link-primary underline-offset-2">{{ __('documentation') }}</a>.
+                                <a href="{{ config('app.documentation_url') }}/self-hosting/configuration/backup" target="_blank" class="link link-primary underline-offset-2">{{ __('To customise the encryption key, check the documentation.') }}</a>
                             @endif
                         </x-slot:description>
                         <x-select wire:model.live="form.compression" :options="$compressionOptions" :disabled="!$this->canManage" />
@@ -378,17 +357,11 @@
     </x-modal>
 
     <!-- Delete Schedule Confirmation Modal -->
-    <x-modal wire:model="showDeleteScheduleModal" :title="__('Delete Schedule')">
-        <p>{{ __('Are you sure you want to delete this backup schedule? This action cannot be undone.') }}</p>
-
-        <x-slot:actions>
-            <x-button :label="__('Cancel')" @click="$wire.showDeleteScheduleModal = false" />
-            <x-button
-                class="btn-error"
-                :label="__('Delete')"
-                wire:click="deleteSchedule"
-                spinner
-            />
-        </x-slot:actions>
-    </x-modal>
+    <x-confirm-modal
+        model="showDeleteScheduleModal"
+        :title="__('Delete Schedule')"
+        :message="__('Are you sure you want to delete this backup schedule? This action cannot be undone.')"
+        on-confirm="deleteSchedule"
+        :confirm-label="__('Delete')"
+    />
 </div>

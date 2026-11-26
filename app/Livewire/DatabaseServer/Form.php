@@ -2,6 +2,8 @@
 
 namespace App\Livewire\DatabaseServer;
 
+use App\Actions\DatabaseServer\CreateDatabaseServerAction;
+use App\Actions\DatabaseServer\UpdateDatabaseServerAction;
 use App\Enums\DatabaseSelectionMode;
 use App\Enums\DatabaseType;
 use App\Enums\NotificationChannelSelection;
@@ -20,13 +22,14 @@ use App\Rules\SafeHost;
 use App\Rules\SafeUsername;
 use App\Services\Backup\Databases\DatabaseProvider;
 use App\Services\Backup\ShellProcessor;
-use App\Services\Backup\SyncBackupConfigurationsAction;
 use App\Services\CurrentOrganization;
 use App\Services\SshKeyGenerator;
 use App\Services\SshTunnelService;
-use Illuminate\Support\Facades\DB;
+use App\Support\BackupConfiguration;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Locked;
 
 class Form extends \Livewire\Form
 {
@@ -36,6 +39,11 @@ class Form extends \Livewire\Form
      * lock the form for PHP's full max_execution_time.
      */
     private const int FORM_CONNECT_TIMEOUT_SECONDS = 5;
+
+    /** Fields a cached server probe is only valid for as long as they hold. */
+    private const array CONNECTION_FIELDS = [
+        'database_type', 'host', 'port', 'username', 'password', 'ssl_enabled', 'ssh_enabled',
+    ];
 
     public ?DatabaseServer $server = null;
 
@@ -111,6 +119,10 @@ class Form extends \Livewire\Form
      */
     public string $ssh_public_key = '';
 
+    /** Version the target reported, '' when unreadable, null before any probe. */
+    #[Locked]
+    public ?string $probedServerVersion = null;
+
     public ?string $sshTestMessage = null;
 
     public bool $sshTestSuccess = false;
@@ -162,6 +174,10 @@ class Form extends \Livewire\Form
      */
     public function updated(string $property, mixed $value): void
     {
+        if (in_array($property, self::CONNECTION_FIELDS, true)) {
+            $this->probedServerVersion = null;
+        }
+
         if (preg_match('/^backups\.(\d+)\.retention_policy$/', $property, $matches)) {
             $this->onBackupRetentionPolicyChanged((int) $matches[1], (string) $value);
 
@@ -328,12 +344,7 @@ class Form extends \Livewire\Form
      */
     public function isSystemDatabaseName(string $name): bool
     {
-        return in_array($name, [
-            'information_schema', 'performance_schema', 'mysql', 'sys',
-            'admin', 'local', 'config',
-            'master', 'tempdb', 'model', 'msdb',
-            'rdsadmin', 'azure_maintenance', 'azure_sys',
-        ], true);
+        return \App\Support\BackupConfiguration::isSystemDatabaseName($name);
     }
 
     /**
@@ -886,7 +897,7 @@ class Form extends \Livewire\Form
         if ($this->backups_enabled && $serverType !== null) {
             foreach ($this->backups as $index => $entry) {
                 BackupForm::normalizeDatabaseNames($this->backups[$index], $this->availableDatabases, $serverType);
-                BackupForm::normalizeSelection($this->backups[$index], $serverType);
+                BackupConfiguration::normalizeSelection($this->backups[$index], $serverType);
             }
         }
 
@@ -980,17 +991,14 @@ class Form extends \Livewire\Form
         $validated = $this->formValidate();
 
         $serverData = $this->extractServerData($validated);
-        $serverData['ssh_config_id'] = $this->createOrUpdateSshConfig();
-        DatabaseServer::buildExtraConfig($serverData);
 
-        $serverData['organization_id'] = app(CurrentOrganization::class)->id();
-
-        DB::transaction(function () use ($serverData): void {
-            /** @var array<string, mixed> $serverData */
-            $server = DatabaseServer::create($serverData);
-            $this->syncBackupConfigurations($server);
-            $this->syncNotificationChannels($server);
-        });
+        CreateDatabaseServerAction::run(
+            app(CurrentOrganization::class)->model(),
+            $serverData,
+            backups: $this->backups,
+            sshConfig: $this->sshConfigAttributes(),
+            notificationChannelIds: $this->notificationChannelIdsToLink(),
+        );
 
         return true;
     }
@@ -1007,28 +1015,21 @@ class Form extends \Livewire\Form
 
         $validated = $this->formValidate();
 
-        $serverData = $this->extractServerData($validated);
-
-        // Only update password if a new one is provided
-        if (isset($serverData['password']) && $serverData['password'] === '') {
-            unset($serverData['password']);
-        }
-
-        $serverData['ssh_config_id'] = $this->createOrUpdateSshConfig();
-        DatabaseServer::buildExtraConfig($serverData, $this->server->extra_config, $this->server->database_type->value);
-
-        DB::transaction(function () use ($serverData): void {
-            $this->server->update($serverData);
-            $this->syncBackupConfigurations($this->server);
-            $this->syncNotificationChannels($this->server);
-        });
+        UpdateDatabaseServerAction::run(
+            $this->server,
+            $this->extractServerData($validated),
+            backups: $this->backups,
+            sshConfig: $this->sshConfigAttributes(),
+            notificationChannelIds: $this->notificationChannelIdsToLink(),
+        );
 
         return true;
     }
 
     /**
      * Strip backup/notification-only fields from the validated payload so the
-     * remaining array can be passed straight to Eloquent's mass assignment.
+     * remaining array can be passed straight to Eloquent's mass assignment,
+     * and unlink the SSH tunnel when it is turned off.
      *
      * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
@@ -1040,85 +1041,69 @@ class Form extends \Livewire\Form
             $validated['notification_channel_ids'],
         );
 
+        if (! $this->ssh_enabled) {
+            $validated['ssh_config_id'] = null;
+        }
+
         return $validated;
     }
 
     /**
-     * Create or update SSH config based on form state.
-     * Returns the SSH config ID to link to the server.
+     * The SSH settings to save with the server, or null when it connects
+     * directly. Settings for an existing configuration carry its `id`; that
+     * configuration may be shared with other servers, so it is authorized
+     * on its own.
+     *
+     * @return array<string, mixed>|null
      */
-    private function createOrUpdateSshConfig(): ?string
+    private function sshConfigAttributes(): ?array
     {
         if (! $this->ssh_enabled) {
             return null;
         }
 
-        $sshData = [
+        $existing = $this->sshConfigToUpdate();
+
+        if ($existing !== null) {
+            Gate::authorize('update', $existing);
+        }
+
+        return [
+            'id' => $existing?->id,
             'host' => $this->ssh_host,
             'port' => $this->ssh_port,
             'username' => $this->ssh_username,
             'auth_type' => $this->ssh_auth_type,
             'compression' => $this->ssh_compression,
+            'password' => $this->ssh_password,
+            'private_key' => $this->ssh_private_key,
+            'key_passphrase' => $this->ssh_key_passphrase,
         ];
-
-        // Add sensitive fields if provided
-        if ($this->ssh_auth_type === 'password') {
-            if (! empty($this->ssh_password)) {
-                $sshData['password'] = $this->ssh_password;
-            }
-            $sshData['private_key'] = null;
-            $sshData['key_passphrase'] = null;
-        } else {
-            if (! empty($this->ssh_private_key)) {
-                $sshData['private_key'] = $this->ssh_private_key;
-            }
-            if (! empty($this->ssh_key_passphrase)) {
-                $sshData['key_passphrase'] = $this->ssh_key_passphrase;
-            }
-            $sshData['password'] = null;
-        }
-
-        // Determine which config to update (if any)
-        $existingConfigId = $this->ssh_config_mode === 'existing'
-            ? $this->ssh_config_id
-            : $this->server?->ssh_config_id;
-
-        if ($existingConfigId !== null) {
-            $config = DatabaseServerSshConfig::find($existingConfigId);
-            if ($config !== null) {
-                // Non-sensitive fields are always updated; sensitive fields only when provided
-                $nonSensitiveFields = ['host', 'port', 'username', 'auth_type', 'compression'];
-                $updateData = array_intersect_key($sshData, array_flip($nonSensitiveFields));
-
-                foreach (DatabaseServerSshConfig::SENSITIVE_FIELDS as $field) {
-                    if (! empty($sshData[$field])) {
-                        $updateData[$field] = $sshData[$field];
-                    }
-                }
-
-                $config->update($updateData);
-
-                return $config->id;
-            }
-        }
-
-        $sshData['organization_id'] = app(CurrentOrganization::class)->id();
-
-        return DatabaseServerSshConfig::create($sshData)->id;
     }
 
-    private function syncBackupConfigurations(DatabaseServer $server): void
+    /**
+     * The saved SSH configuration this form's SSH settings are applied to:
+     * the one picked in "existing" mode. "Create new" always saves a new
+     * configuration, even when the server already has one, since that one
+     * may be shared with other servers.
+     */
+    private function sshConfigToUpdate(): ?DatabaseServerSshConfig
     {
-        app(SyncBackupConfigurationsAction::class)->execute($server, $this->backups);
+        if ($this->ssh_config_mode !== 'existing' || $this->ssh_config_id === null) {
+            return null;
+        }
+
+        return DatabaseServerSshConfig::find($this->ssh_config_id);
     }
 
-    private function syncNotificationChannels(DatabaseServer $server): void
+    /**
+     * @return list<string>
+     */
+    private function notificationChannelIdsToLink(): array
     {
-        if ($this->notification_channel_selection === 'selected') {
-            $server->notificationChannels()->sync($this->notification_channel_ids);
-        } else {
-            $server->notificationChannels()->detach();
-        }
+        return $this->notification_channel_selection === 'selected'
+            ? array_values($this->notification_channel_ids)
+            : [];
     }
 
     /**
@@ -1174,32 +1159,14 @@ class Form extends \Livewire\Form
             throw $e;
         }
 
-        // Test connection
         try {
-            $password = $this->password ?: $this->server?->getDecryptedPassword();
+            $server = $this->buildServerForTest();
         } catch (EncryptionException $e) {
             $this->connectionTestSuccess = false;
             $this->connectionTestMessage = $e->getMessage();
 
             return;
         }
-
-        // Build SSH config for connection test
-        $sshConfig = $this->ssh_enabled
-            ? $this->buildSshConfigForTest()
-            : null;
-
-        $server = DatabaseServer::forConnectionTest([
-            'database_type' => $this->database_type,
-            'host' => $this->host,
-            'port' => $this->port,
-            'username' => $this->username,
-            'password' => $password,
-            'database_names' => $this->identifiesDatabasesByPath()
-                ? $this->collectDatabasePaths()
-                : null,
-            'extra_config' => $this->buildExtraConfigForTest(),
-        ], $sshConfig);
 
         $result = app(DatabaseProvider::class)->testConnectionForServer($server);
 
@@ -1244,27 +1211,11 @@ class Form extends \Livewire\Form
     }
 
     /**
-     * Get a decrypted SSH config field from the existing config (either linked or selected).
+     * Get a decrypted SSH config field from the configuration the form's SSH settings are applied to.
      */
     private function getSshFieldFromConfig(string $field): ?string
     {
-        $configId = $this->ssh_config_id;
-
-        // If editing server with linked config, use server's config
-        if ($this->server !== null && $this->server->sshConfig !== null) {
-            $configId = $this->server->ssh_config_id;
-        }
-
-        if ($configId === null) {
-            return null;
-        }
-
-        $config = DatabaseServerSshConfig::find($configId);
-        if ($config === null) {
-            return null;
-        }
-
-        $decrypted = $config->getDecrypted();
+        $decrypted = $this->sshConfigToUpdate()?->getDecrypted();
 
         return $decrypted[$field] ?? null;
     }
@@ -1279,6 +1230,32 @@ class Form extends \Livewire\Form
         $extra = $this->connectionRules()->extraConfig($this);
 
         return $extra === [] ? null : $extra;
+    }
+
+    /**
+     * Unsaved server describing the connection the form currently holds.
+     *
+     * @throws EncryptionException when the stored password cannot be decrypted
+     */
+    public function buildServerForTest(?int $connectTimeout = null): DatabaseServer
+    {
+        $extraConfig = $this->buildExtraConfigForTest() ?? [];
+
+        if ($connectTimeout !== null) {
+            $extraConfig['connect_timeout'] = $connectTimeout;
+        }
+
+        return DatabaseServer::forConnectionTest([
+            'database_type' => $this->database_type,
+            'host' => $this->host,
+            'port' => $this->port,
+            'username' => $this->username,
+            'password' => $this->password ?: $this->server?->getDecryptedPassword(),
+            'database_names' => $this->identifiesDatabasesByPath()
+                ? $this->collectDatabasePaths()
+                : null,
+            'extra_config' => $extraConfig === [] ? null : $extraConfig,
+        ], $this->ssh_enabled ? $this->buildSshConfigForTest() : null);
     }
 
     /**
@@ -1297,7 +1274,10 @@ class Form extends \Livewire\Form
         // Use form values or fall back to existing config values
         $config->password = $this->ssh_password ?: $this->getSshFieldFromConfig('password');
         $config->private_key = $this->ssh_private_key ?: $this->getSshFieldFromConfig('private_key');
-        $config->key_passphrase = $this->ssh_key_passphrase ?: $this->getSshFieldFromConfig('key_passphrase');
+        // A replacement key is saved without the stored passphrase, so the test must not borrow it
+        $config->key_passphrase = filled($this->ssh_private_key)
+            ? $this->ssh_key_passphrase
+            : ($this->ssh_key_passphrase ?: $this->getSshFieldFromConfig('key_passphrase'));
 
         return $config;
     }
@@ -1315,25 +1295,9 @@ class Form extends \Livewire\Form
         $this->availableDatabases = [];
 
         try {
-            $password = $this->password ?: $this->server?->getDecryptedPassword();
-
-            // Build SSH config if enabled
-            $sshConfig = $this->ssh_enabled ? $this->buildSshConfigForTest() : null;
-
-            $extraConfig = $this->buildExtraConfigForTest() ?? [];
-            $extraConfig['connect_timeout'] = self::FORM_CONNECT_TIMEOUT_SECONDS;
-
-            // Create a temporary DatabaseServer object for the service
-            $tempServer = DatabaseServer::forConnectionTest([
-                'host' => $this->host,
-                'port' => $this->port,
-                'database_type' => $this->database_type,
-                'username' => $this->username,
-                'password' => $password,
-                'extra_config' => $extraConfig,
-            ], $sshConfig);
-
-            $databases = app(DatabaseProvider::class)->listDatabasesForServer($tempServer);
+            $databases = app(DatabaseProvider::class)->listDatabasesForServer(
+                $this->buildServerForTest(self::FORM_CONNECT_TIMEOUT_SECONDS)
+            );
 
             // Format for select options
             $this->availableDatabases = collect($databases)
@@ -1412,8 +1376,13 @@ class Form extends \Livewire\Form
             'ssh_auth_type' => 'required|string|in:password,key',
         ];
 
-        // Sensitive fields are optional when editing existing server or using existing SSH config
-        $credentialsOptional = ($this->ssh_config_mode === 'existing' && $this->ssh_config_id) || $this->server !== null;
+        // A blank credential keeps the stored one, so it may only be left
+        // blank when the configuration being updated already holds one for
+        // the selected authentication type.
+        $stored = $this->sshConfigToUpdate();
+        $credentialsOptional = $stored !== null
+            && $stored->auth_type === $this->ssh_auth_type
+            && filled($this->ssh_auth_type === 'password' ? $stored->password : $stored->private_key);
         $credentialRule = $credentialsOptional ? 'nullable|string' : 'required|string';
 
         if ($this->ssh_auth_type === 'password') {

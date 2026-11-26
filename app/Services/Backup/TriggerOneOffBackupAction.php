@@ -7,6 +7,7 @@ use App\Jobs\ProcessBackupJob;
 use App\Models\DatabaseServer;
 use App\Models\Snapshot;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
@@ -64,6 +65,10 @@ class TriggerOneOffBackupAction
     private function authorize(DatabaseServer $server, User $user, bool $locked): void
     {
         Gate::forUser($user)->authorize('backup', $server);
+        if (! $server->backups_enabled) {
+            throw new AuthorizationException(__('Backups are disabled for this database server.'));
+        }
+
         abort_if($user->isDemo(), 403);
         if ($locked) {
             Gate::forUser($user)->authorize('lock', new Snapshot);

@@ -1,26 +1,17 @@
 <div>
-    <!-- HEADER with search (Desktop) -->
-    <x-header title="{{ __('Database Servers') }}" separator progress-indicator>
+    <x-header :title="__('Database Servers')" separator progress-indicator>
         <x-slot:actions>
-            <div class="hidden sm:flex items-center gap-2">
-                <x-input placeholder="{{ __('Search...') }}" wire:model.live.debounce="search" clearable
-                         icon="o-magnifying-glass" class="!input-sm w-48" />
-                @if ($search)
-                    <x-button icon="o-x-mark" wire:click="clear" spinner class="btn-ghost btn-sm"
-                              tooltip="{{ __('Clear search') }}" />
-                @endif
+            <div class="hidden lg:flex items-center gap-2">
+                @include('livewire.database-server._filters', ['variant' => 'desktop'])
             </div>
             @can('viewForm', App\Models\DatabaseServer::class)
-                <x-button label="{{ __('Add Server') }}" link="{{ route('database-servers.create') }}" icon="o-plus"
-                          class="btn-primary btn-sm" wire:navigate />
+                <x-button :label="__('Add Server')" :link="route('database-servers.create')" icon="o-plus" class="btn-primary btn-sm" wire:navigate />
             @endcan
         </x-slot:actions>
     </x-header>
 
-    <!-- SEARCH (Mobile) -->
-    <div class="sm:hidden mb-4">
-        <x-input placeholder="{{ __('Search...') }}" wire:model.live.debounce="search" clearable
-                 icon="o-magnifying-glass" />
+    <div class="lg:hidden mb-4" x-data="{ showFilters: false }">
+        @include('livewire.database-server._filters', ['variant' => 'mobile'])
     </div>
 
     <!-- TABLE -->
@@ -28,8 +19,8 @@
         <x-table :headers="$headers" :rows="$servers" :sort-by="$sortBy" with-pagination class="table-fixed">
             <x-slot:empty>
                 <div class="text-center text-base-content/50 py-8">
-                    @if ($search)
-                        {{ __('No database servers found matching your search.') }}
+                    @if ($this->hasFilters)
+                        {{ __('No database servers found matching your filters.') }}
                     @else
                         {{ __('No database servers yet.') }}
                         <a href="{{ route('database-servers.create') }}" class="link link-primary" wire:navigate>
@@ -47,13 +38,37 @@
                         <livewire:database-server.connection-status :server="$server" lazy :key="'conn-' . $server->id" />
                     </div>
                 </div>
-                <div>
-                    @can('view', $server)
-                        <a href="{{ route('database-servers.show', $server) }}" wire:navigate
-                           class="table-cell-primary link link-hover hover:text-primary">{{ $server->name }}</a>
-                    @else
-                        <div class="table-cell-primary">{{ $server->name }}</div>
-                    @endcan
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        @can('view', $server)
+                            <a href="{{ route('database-servers.show', $server) }}" wire:navigate
+                               class="table-cell-primary link link-hover hover:text-primary truncate">{{ $server->name }}</a>
+                        @else
+                            <div class="table-cell-primary truncate">{{ $server->name }}</div>
+                        @endcan
+                        @if ($server->getSshDisplayName())
+                            <x-popover>
+                                <x-slot:trigger>
+                                    <x-badge value="SSH" class="badge-warning badge-xs cursor-pointer" />
+                                </x-slot:trigger>
+                                <x-slot:content class="text-sm">
+                                    {{ __('Via') }} {{ $server->getSshDisplayName() }}
+                                </x-slot:content>
+                            </x-popover>
+                        @endif
+                        @if ($server->agent)
+                            @php $agentOnline = $server->agent->isOnline(); @endphp
+                            <x-popover>
+                                <x-slot:trigger>
+                                    <x-badge :value="__('Agent')" class="{{ $agentOnline ? 'badge-success' : 'badge-error' }} badge-xs cursor-pointer" />
+                                </x-slot:trigger>
+                                <x-slot:content class="text-sm flex items-center gap-2">
+                                    <span>{{ __('Via') }} {{ $server->agent->name }}</span>
+                                    <x-agent-status-indicator :status="$server->agent->connectionStatus()" />
+                                </x-slot:content>
+                            </x-popover>
+                        @endif
+                    </div>
                     <div class="flex items-center gap-2 text-sm text-base-content/70">
                         @include('livewire.database-server._notification-indicator', [
                             'server' => $server,
@@ -71,16 +86,6 @@
                                 {{ $server->getConnectionDetails() }}
                             </x-slot:content>
                         </x-popover>
-                        @if ($server->getSshDisplayName())
-                            <x-popover>
-                                <x-slot:trigger>
-                                    <x-badge value="SSH" class="badge-warning badge-xs cursor-pointer" />
-                                </x-slot:trigger>
-                                <x-slot:content class="text-sm">
-                                    {{ __('Via') }} {{ $server->getSshDisplayName() }}
-                                </x-slot:content>
-                            </x-popover>
-                        @endif
                     </div>
                     @if ($server->description)
                         <div class="text-sm text-base-content/50">{{ Str::limit($server->description, 50) }}</div>
@@ -131,6 +136,13 @@
                         <x-button icon="o-ellipsis-vertical" class="btn-ghost btn-sm" :tooltip-left="__('Actions')" />
                     </x-slot:trigger>
 
+                    @php
+                        $canBackup = $server->backups_enabled && $server->backups->isNotEmpty() && auth()->user()->can('backup', $server);
+                        $canRestore = auth()->user()->can('restore', $server);
+                        $canToggleBackups = $server->backups->isNotEmpty() && auth()->user()->can('update', $server);
+                        $canEdit = auth()->user()->can('viewForm', $server);
+                    @endphp
+
                     @can('view', $server)
                         <x-menu-item :title="__('View')" icon="o-eye"
                                      link="{{ route('database-servers.show', $server) }}" wire:navigate />
@@ -140,7 +152,11 @@
                                      wire:click="openAdminer('{{ $server->id }}')" spinner
                                      class="text-accent" />
                     @endif
-                    @can('backup', $server)
+
+                    @if($canBackup || $canRestore)
+                        <x-menu-separator />
+                    @endif
+                    @if($canBackup)
                         @unless(auth()->user()->isDemo())
                             <x-menu-item :title="__('One-off backup')" icon="o-circle-stack"
                                          wire:click="$dispatch('open-one-off-backup', { serverId: '{{ $server->id }}' })" />
@@ -148,26 +164,34 @@
                         <x-menu-item :title="__('Backup now')" icon="bi.database-fill-up"
                                      wire:click="runBackupAll('{{ $server->id }}')" spinner
                                      class="text-info" />
-                    @endcan
-                    @can('restore', $server)
+                        @if($server->database_type !== \App\Enums\DatabaseType::REDIS)
+                            <x-menu-item :title="__('Backup selected databases')" icon="o-queue-list"
+                                         wire:click="$dispatch('open-backup-databases-modal', { serverId: '{{ $server->id }}' })"
+                                         class="text-info" />
+                        @endif
+                    @endif
+                    @if($canRestore)
                         <x-menu-item :title="__('Restore')" icon="bi.database-fill-down"
                                      wire:click="confirmRestore('{{ $server->id }}')" spinner
                                      class="text-success" />
-                    @endcan
-                    @can('update', $server)
-                        @if($server->backups->isNotEmpty())
-                            <x-menu-item
-                                :title="$server->backups_enabled ? __('Disable Backup') : __('Enable Backup')"
-                                :icon="$server->backups_enabled ? 'o-pause-circle' : 'o-play-circle'"
-                                wire:click="toggleBackupsEnabled('{{ $server->id }}')"
-                                spinner
-                            />
-                        @endif
-                    @endcan
-                    @can('viewForm', $server)
+                    @endif
+
+                    @if($canEdit || $canToggleBackups)
+                        <x-menu-separator />
+                    @endif
+                    @if($canEdit)
                         <x-menu-item :title="__('Edit')" icon="o-pencil"
                                      link="{{ route('database-servers.edit', $server) }}" wire:navigate />
-                    @endcan
+                    @endif
+                    @if($canToggleBackups)
+                        <x-menu-item
+                            :title="$server->backups_enabled ? __('Disable Backup') : __('Enable Backup')"
+                            :icon="$server->backups_enabled ? 'o-pause-circle' : 'o-play-circle'"
+                            wire:click="toggleBackupsEnabled('{{ $server->id }}')"
+                            spinner
+                        />
+                    @endif
+
                     @can('delete', $server)
                         <x-menu-separator />
                         <x-menu-item :title="__('Delete')" icon="o-trash"
@@ -189,45 +213,13 @@
     <livewire:restore.modal />
     <livewire:database-server.one-off-backup-modal />
 
+    <!-- BACKUP SELECTED DATABASES MODAL -->
+    <livewire:database-server.backup-databases-modal />
+
     <!-- ADMINER MODAL -->
     <livewire:database-server.adminer-modal />
 
     <!-- REDIS RESTORE INFO MODAL -->
-    <x-modal wire:model="showRedisRestoreModal" :title="__('Restore Redis / Valkey Snapshot')" class="backdrop-blur">
-        <div class="space-y-4">
-            <x-alert class="alert-info" icon="o-information-circle">
-                <div>
-                    <span class="font-bold">{{ __('Manual Restore Required') }}</span>
-                    <p class="text-sm mt-1">
-                        {{ __('Automated restore is not supported for Redis/Valkey. RDB snapshots must be restored manually.') }}
-                    </p>
-                </div>
-            </x-alert>
-
-            <div class="p-4 border rounded-lg bg-base-200 border-base-300 space-y-3">
-                <div class="text-sm font-semibold">{{ __('How to Restore an RDB Snapshot') }}</div>
-                <ol class="list-decimal list-inside text-sm space-y-2 opacity-80">
-                    <li>{{ __('Download the snapshot archive (.rdb.gz) from your storage volume.') }}</li>
-                    <li>{{ __('Extract the RDB file from the archive (e.g., gunzip snapshot.rdb.gz).') }}</li>
-                    <li>{{ __('Stop the Redis/Valkey server.') }}</li>
-                    <li>{{ __('Copy the RDB file to the Redis data directory, replacing dump.rdb.') }}</li>
-                    <li>{{ __('Set correct file permissions (e.g., chown redis:redis dump.rdb).') }}</li>
-                    <li>{{ __('Restart the Redis/Valkey server.') }}</li>
-                </ol>
-            </div>
-
-            @if ($restoreId)
-                <a href="{{ route('snapshots.index', ['serverFilter' => $restoreId]) }}"
-                   class="btn btn-sm btn-outline gap-2" wire:navigate>
-                    <x-icon name="o-arrow-down-tray" class="w-4 h-4" />
-                    {{ __('View Backup Snapshots') }}
-                </a>
-            @endif
-        </div>
-
-        <x-slot:actions>
-            <x-button label="{{ __('Close') }}" @click="$wire.showRedisRestoreModal = false" />
-        </x-slot:actions>
-    </x-modal>
+    @include('partials.redis-restore-modal', ['serverId' => $restoreId])
 
 </div>

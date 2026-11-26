@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Contracts\BackupLogger;
 use App\Enums\BackupJobStatus;
+use App\Exceptions\Backup\JobCancelledException;
 use App\Models\Scopes\OrganizationScope;
 use App\Services\CurrentOrganization;
 use App\Support\Formatters;
@@ -11,6 +12,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @mixin IdeHelperBackupJob
@@ -18,6 +20,12 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class BackupJob extends Model implements BackupLogger
 {
     use HasUlids;
+
+    /**
+     * Seconds without a command heartbeat after which a running job is shown
+     * as possibly stalled. Heartbeats are sent every 30 seconds.
+     */
+    public const int COMMAND_HEARTBEAT_WARNING_SECONDS = 120;
 
     /**
      * Columns a listing needs, excluding the potentially huge `logs` and
@@ -31,6 +39,7 @@ class BackupJob extends Model implements BackupLogger
         'status',
         'started_at',
         'completed_at',
+        'command_heartbeat_at',
         'duration_ms',
         'error_message',
         'created_at',
@@ -42,11 +51,18 @@ class BackupJob extends Model implements BackupLogger
         'status',
         'started_at',
         'completed_at',
+        'command_heartbeat_at',
         'duration_ms',
         'error_message',
         'error_trace',
         'logs',
     ];
+
+    /**
+     * Set once a write found the job cancelled: the runner is unwinding, and
+     * its remaining writes (cleanup, failure logs) are dropped.
+     */
+    private bool $cancelled = false;
 
     protected function casts(): array
     {
@@ -54,6 +70,7 @@ class BackupJob extends Model implements BackupLogger
             'status' => BackupJobStatus::class,
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
+            'command_heartbeat_at' => 'datetime',
             'duration_ms' => 'integer',
             'logs' => 'array',
         ];
@@ -140,6 +157,7 @@ class BackupJob extends Model implements BackupLogger
         $updates = [
             'status' => BackupJobStatus::Completed->value,
             'completed_at' => now(),
+            'command_heartbeat_at' => null,
             'duration_ms' => $this->calculateDuration(),
             'error_message' => null,
             'error_trace' => null,
@@ -148,7 +166,7 @@ class BackupJob extends Model implements BackupLogger
 
         $updated = $this->newQuery()
             ->whereKey($this->getKey())
-            ->where('status', BackupJobStatus::Running->value)
+            ->inProgress()
             ->update($updates);
 
         if ($updated === 0) {
@@ -165,9 +183,10 @@ class BackupJob extends Model implements BackupLogger
      */
     public function markFailed(\Throwable $exception): void
     {
-        $this->update([
+        $this->write([
             'status' => BackupJobStatus::Failed,
             'completed_at' => now(),
+            'command_heartbeat_at' => null,
             'duration_ms' => $this->calculateDuration(),
             'error_message' => $exception->getMessage(),
             'error_trace' => $exception->getTraceAsString(),
@@ -176,11 +195,71 @@ class BackupJob extends Model implements BackupLogger
     }
 
     /**
-     * A command log entry can be left at `status: 'running'` if the job dies
-     * between `startCommandLog()` and `ShellProcessor`'s finalize step (queue
-     * timeout, worker kill, uncaught fatal error). Without this, the log-modal
-     * UI keeps showing a "Running" spinner on that command forever, even
-     * though the job itself is already marked failed.
+     * Mark job as running, on its first attempt or a retry
+     */
+    public function markRunning(): void
+    {
+        $this->write([
+            'status' => BackupJobStatus::Running,
+            'started_at' => now(),
+            'command_heartbeat_at' => null,
+            'logs' => $this->logsWithDanglingCommandsFailed(),
+        ]);
+    }
+
+    /**
+     * Cancel the job if it is still in progress. Its runner notices at its
+     * next write: the worker through {@see self::write()}, an agent through
+     * the job heartbeat its closed agent job now refuses.
+     */
+    public function cancel(string $cancelledBy): bool
+    {
+        return DB::transaction(function () use ($cancelledBy): bool {
+            $job = self::query()->whereKey($this->getKey())->lockForUpdate()->first();
+
+            if ($job === null || ! $job->status->isInProgress()) {
+                return false;
+            }
+
+            $message = "Cancelled by {$cancelledBy}.";
+
+            $job->update([
+                'status' => BackupJobStatus::Cancelled,
+                'completed_at' => now(),
+                'command_heartbeat_at' => null,
+                'duration_ms' => $job->calculateDuration(),
+                'error_message' => $message,
+                'logs' => [...$job->logsWithDanglingCommandsFailed(), self::logEntry($message, 'warning')],
+            ]);
+
+            AgentJob::query()
+                ->unfinishedFor([$job->id])
+                ->get()
+                ->each(fn (AgentJob $agentJob) => $agentJob->markFailed('Cancelled.'));
+
+            $this->setRawAttributes($job->getAttributes(), sync: true);
+
+            return true;
+        }, attempts: 3);
+    }
+
+    /**
+     * Record that the agent running this job was lost before it finished.
+     */
+    public function markAgentLost(): void
+    {
+        $this->saveLogs([
+            ...$this->logsWithDanglingCommandsFailed(),
+            self::logEntry('Lost contact with the agent, the job will be retried.', 'warning'),
+        ]);
+    }
+
+    /**
+     * A command log entry is left at `status: 'running'` when its runner dies
+     * mid-command (queue timeout, worker or agent killed). Once the job ends,
+     * is retried or loses its agent, that command will never finish: marking
+     * it failed keeps the log modal from showing it running forever, and
+     * keeps it from counting as a running command in {@see self::saveLogs()}.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -205,28 +284,6 @@ class BackupJob extends Model implements BackupLogger
         return $this->started_at
             ? (int) $this->started_at->diffInMilliseconds(now())
             : null;
-    }
-
-    /**
-     * Mark job as running
-     */
-    public function markRunning(?string $queueJobId = null): bool
-    {
-        $updates = [
-            'status' => BackupJobStatus::Running->value,
-            'started_at' => now(),
-            'completed_at' => null,
-            'duration_ms' => null,
-            'error_message' => null,
-            'error_trace' => null,
-            'updated_at' => now(),
-        ];
-
-        if ($queueJobId !== null) {
-            $updates['job_id'] = $queueJobId;
-        }
-
-        return $this->update($updates);
     }
 
     /**
@@ -271,18 +328,14 @@ class BackupJob extends Model implements BackupLogger
      */
     public function logCommand(string $command, ?string $output = null, ?int $exitCode = null, ?float $startTime = null): void
     {
-        $logs = $this->logs ?? [];
-
-        $logs[] = [
+        $this->saveLogs([...($this->logs ?? []), [
             'timestamp' => now()->toIso8601String(),
             'type' => 'command',
             'command' => $command,
             'output' => $output,
             'exit_code' => $exitCode,
             'duration_ms' => $startTime ? round((microtime(true) - $startTime) * 1000, 2) : null,
-        ];
-
-        $this->update(['logs' => $logs]);
+        ]]);
     }
 
     /**
@@ -291,9 +344,7 @@ class BackupJob extends Model implements BackupLogger
      */
     public function startCommandLog(string $command): int
     {
-        $logs = $this->logs ?? [];
-
-        $logs[] = [
+        $logs = [...($this->logs ?? []), [
             'timestamp' => now()->toIso8601String(),
             'type' => 'command',
             'command' => $command,
@@ -301,9 +352,9 @@ class BackupJob extends Model implements BackupLogger
             'output' => null,
             'exit_code' => null,
             'duration_ms' => null,
-        ];
+        ]];
 
-        $this->update(['logs' => $logs]);
+        $this->saveLogs($logs);
 
         return count($logs) - 1;
     }
@@ -323,7 +374,7 @@ class BackupJob extends Model implements BackupLogger
 
         $logs[$index] = array_merge($logs[$index], $data);
 
-        $this->update(['logs' => $logs]);
+        $this->saveLogs($logs);
     }
 
     /**
@@ -333,8 +384,105 @@ class BackupJob extends Model implements BackupLogger
      */
     public function log(string $message, string $level = 'info', ?array $context = null): void
     {
+        $this->saveLogs([...($this->logs ?? []), self::logEntry($message, $level, $context)]);
+    }
+
+    /**
+     * Merge log entries recorded by a remote agent. A runner runs one command
+     * at a time and resends it while it runs, with more output and finally
+     * its result: an incoming command entry replaces the job's running
+     * command, if there is one. Everything else is appended.
+     *
+     * @param  array<int, array<string, mixed>>  $entries
+     */
+    public function mergeLogs(array $entries): void
+    {
+        if ($entries === []) {
+            return;
+        }
+
         $logs = $this->logs ?? [];
 
+        foreach ($entries as $entry) {
+            $running = ($entry['type'] ?? null) === 'command' ? self::runningCommandIndex($logs) : null;
+
+            if ($running === null) {
+                $logs[] = $entry;
+            } else {
+                $logs[$running] = $entry;
+            }
+        }
+
+        $this->saveLogs($logs);
+    }
+
+    /**
+     * Every log write goes through here. While a command is running, each
+     * write refreshes `command_heartbeat_at`: runners report a running
+     * command every 30 seconds, so a stale value means its runner was lost.
+     *
+     * @param  array<int, array<string, mixed>>  $logs
+     */
+    private function saveLogs(array $logs): void
+    {
+        $this->write([
+            'logs' => $logs,
+            'command_heartbeat_at' => self::runningCommandIndex($logs) === null ? null : now(),
+        ]);
+    }
+
+    /**
+     * Save the runner's changes unless the job was cancelled meanwhile, in
+     * which case the runner is told to stop.
+     *
+     * @param  array<string, mixed>  $attributes
+     *
+     * @throws JobCancelledException
+     */
+    private function write(array $attributes): void
+    {
+        if ($this->cancelled) {
+            return;
+        }
+
+        $this->fill($attributes);
+
+        $notCancelled = fn () => self::query()
+            ->whereKey($this->getKey())
+            ->where('status', '!=', BackupJobStatus::Cancelled);
+
+        // MySQL counts changed rows, not matched ones, so an update that
+        // changes nothing is told apart from a cancelled job by a read.
+        if ($notCancelled()->update($this->getDirty()) === 0 && ! $notCancelled()->exists()) {
+            $this->cancelled = true;
+            $this->setRawAttributes($this->getRawOriginal());
+
+            throw new JobCancelledException;
+        }
+
+        $this->syncOriginal();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $logs
+     */
+    private static function runningCommandIndex(array $logs): ?int
+    {
+        foreach (array_reverse($logs, preserve_keys: true) as $index => $entry) {
+            if (($entry['status'] ?? null) === 'running') {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $context
+     * @return array<string, mixed>
+     */
+    private static function logEntry(string $message, string $level, ?array $context = null): array
+    {
         $entry = [
             'timestamp' => now()->toIso8601String(),
             'type' => 'log',
@@ -346,9 +494,7 @@ class BackupJob extends Model implements BackupLogger
             $entry['context'] = $context;
         }
 
-        $logs[] = $entry;
-
-        $this->update(['logs' => $logs]);
+        return $entry;
     }
 
     /**

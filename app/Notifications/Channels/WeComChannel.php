@@ -2,12 +2,14 @@
 
 namespace App\Notifications\Channels;
 
+use App\Notifications\Concerns\PostsToEndpoint;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class WeComChannel
 {
+    use PostsToEndpoint;
+
     public function send(object $notifiable, Notification $notification): void
     {
         /** @var array{msgtype: string, markdown: array{content: string}} $payload */
@@ -20,7 +22,7 @@ class WeComChannel
             return;
         }
 
-        $response = Http::timeout(10)->post($url, $payload)->throw();
+        $response = $this->postToEndpoint($url, $payload);
         $result = $response->json();
 
         if (! is_array($result) || ! array_key_exists('errcode', $result) || (int) $result['errcode'] !== 0) {

@@ -1,21 +1,8 @@
 <div>
-    <x-header :title="__('Configuration')" separator>
-        <x-slot:subtitle>
-            {{ __('Manage notification channels for backup and restore events.') }}
-        </x-slot:subtitle>
-    </x-header>
-
-    @include('livewire.configuration._tabs', ['active' => 'notification'])
+    <x-configuration-header active="notification" :subtitle="__('Manage notification channels for backup and restore events.')" />
 
     <x-card shadow class="min-w-0">
-        <x-card-heading :title="__('Notification Channels')" :subtitle="__('Assign channels per database server to receive alerts on backup and restore events.')">
-            <x-button
-                :label="__('Documentation')"
-                icon="o-book-open"
-                link="{{ config('app.documentation_url') }}/self-hosting/configuration/notification"
-                external
-                class="btn-ghost btn-sm"
-            />
+        <x-card-heading :title="__('Notification Channels')" :subtitle="__('Assign channels per database server to receive alerts on backup and restore events.')" docs="self-hosting/configuration/notification">
             @if ($this->canManage)
                 <x-button
                     :label="__('Add Channel')"
@@ -103,6 +90,10 @@
             @elseif ($channelForm->type === 'gotify')
                 <x-input wire:model="channelForm.config_url" :label="__('Server URL')" :placeholder="__('https://gotify.example.com')" required />
                 <x-password wire:model="channelForm.config_token" :label="__('App Token')" :placeholder="$channelForm->has_config_token ? '********' : ''" />
+            @elseif ($channelForm->type === 'pushplus')
+                <x-password wire:model="channelForm.config_token" :label="__('Token')" :placeholder="$channelForm->has_config_token ? '********' : ''" />
+                <x-input wire:model="channelForm.config_channel" :label="__('Channel (optional)')" placeholder="wechat" :hint="__('PushPlus delivery channel, e.g. wechat, app or mail. Defaults to wechat.')" />
+                <x-input wire:model="channelForm.config_topic" :label="__('Topic (optional)')" :hint="__('Group code to push to the members of a PushPlus group.')" />
             @elseif ($channelForm->type === 'wecom')
                 <x-password wire:model="channelForm.config_webhook_url" :label="__('Robot Webhook URL')" :placeholder="$channelForm->has_config_webhook_url ? '********' : ''" />
             @elseif ($channelForm->type === 'webhook')
@@ -127,17 +118,11 @@
     </x-modal>
 
     <!-- Delete Channel Confirmation Modal -->
-    <x-modal wire:model="showDeleteChannelModal" :title="__('Delete Channel')">
-        <p>{{ __('Are you sure you want to delete this notification channel? This action cannot be undone.') }}</p>
-
-        <x-slot:actions>
-            <x-button :label="__('Cancel')" @click="$wire.showDeleteChannelModal = false" />
-            <x-button
-                class="btn-error"
-                :label="__('Delete')"
-                wire:click="deleteChannel"
-                spinner
-            />
-        </x-slot:actions>
-    </x-modal>
+    <x-confirm-modal
+        model="showDeleteChannelModal"
+        :title="__('Delete Channel')"
+        :message="__('Are you sure you want to delete this notification channel? This action cannot be undone.')"
+        on-confirm="deleteChannel"
+        :confirm-label="__('Delete')"
+    />
 </div>

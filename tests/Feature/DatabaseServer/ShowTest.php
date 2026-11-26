@@ -1,6 +1,8 @@
 <?php
 
+use App\Actions\DatabaseServer\DeleteDatabaseServerAction;
 use App\Enums\Ability;
+use App\Exceptions\DatabaseServer\DatabaseServerFilesNotDeletedException;
 use App\Livewire\DatabaseServer\Show;
 use App\Models\Backup;
 use App\Models\DatabaseServer;
@@ -63,6 +65,19 @@ test('delete removes the database server', function () {
     $this->assertDatabaseMissing('database_servers', ['id' => $server->id]);
 });
 
+test('a server whose files cannot be deleted stays on its page instead of redirecting', function () {
+    $user = User::factory()->withAbilities([Ability::ManageDatabaseServers->value])->create();
+    $server = DatabaseServer::factory()->withoutBackups()->create();
+    DeleteDatabaseServerAction::shouldRun()->andThrow(new DatabaseServerFilesNotDeletedException($server, ['Offsite: Volume unreachable']));
+
+    Livewire::actingAs($user)
+        ->test(Show::class, ['server' => $server])
+        ->set('showDeleteModal', true)
+        ->call('delete')
+        ->assertSet('showDeleteModal', false)
+        ->assertNoRedirect();
+});
+
 test('delete cascades to scheduled restores referencing the server', function () {
     $user = User::factory()->withAbilities([Ability::ManageDatabaseServers->value])->create();
     $server = DatabaseServer::factory()->withoutBackups()->create();
@@ -88,16 +103,17 @@ test('confirmRestore on a Redis server opens the redis info modal', function () 
         ->assertSet('showRedisRestoreModal', true);
 });
 
-test('snapshot counter only includes completed snapshots', function () {
+test('snapshot counter and total size only include completed snapshots', function () {
     // Viewing needs no ability — an org member with zero grants can view a server.
     $user = User::factory()->withAbilities([])->create();
     $server = DatabaseServer::factory()->create();
 
-    Snapshot::factory()->forServer($server)->completed()->create();
-    Snapshot::factory()->forServer($server)->completed()->create();
-    Snapshot::factory()->forServer($server)->failed()->create();
+    Snapshot::factory()->forServer($server)->completed()->create(['file_size' => 1024]);
+    Snapshot::factory()->forServer($server)->completed()->create(['file_size' => 2048]);
+    Snapshot::factory()->forServer($server)->failed()->create(['file_size' => 4096]);
 
     Livewire::actingAs($user)
         ->test(Show::class, ['server' => $server])
-        ->assertSet('snapshotsCount', 2);
+        ->assertSet('snapshotsCount', 2)
+        ->assertSet('snapshotsSize', 3072);
 });

@@ -41,6 +41,39 @@ docker run --rm registry.cn-guangzhou.aliyuncs.com/zhisuaninfo/datacask:latest p
 
 Copy the output (e.g., `base64:xxxx...`) and set it as `APP_KEY`.
 
+### Rotating the Application Key
+
+`APP_KEY` encrypts every stored credential (database server and SSH passwords, SSH keys, volume and notification secrets, SSO tokens, two-factor secrets). Replacing it outright makes all of them unreadable, so rotate it in this order:
+
+1. Generate a new key (see above).
+2. Move the current key to `APP_PREVIOUS_KEYS` and set the new one as `APP_KEY`:
+
+   ```bash
+   APP_KEY=base64:new-key
+   APP_PREVIOUS_KEYS=base64:old-key
+   ```
+
+3. If `BACKUP_ENCRYPTION_KEY` is not set, set it to the **old** key. Encrypted backups use `APP_KEY` by default, and `APP_PREVIOUS_KEYS` does not apply to them, so without this step existing encrypted backups can no longer be restored. See [Encrypted Backups](./backup.md#encrypted-backups).
+4. Restart the application and the queue worker. Users are logged out once.
+5. Re-encrypt the stored values with the new key:
+
+   ```bash
+   php artisan key:reencrypt
+   ```
+
+   It prints a count per column and is safe to run again. A value that neither key can decrypt is left unchanged and reported; enter that credential again in the UI.
+6. Confirm nothing needs the old key any more, then remove `APP_PREVIOUS_KEYS` and restart:
+
+   ```bash
+   php artisan key:reencrypt --check
+   ```
+
+   `--check` changes nothing and exits non-zero while a value still needs a previous key.
+
+:::warning
+Copies of Databasement's own database taken before the rotation can still be decrypted with the old key. If the old key leaked, also change the credentials themselves (database passwords, storage and notification secrets) at their source and update them in Databasement, and in step 3 set `BACKUP_ENCRYPTION_KEY` to a newly generated key instead, so new backups do not use the leaked one. Keep the old key somewhere safe: restoring a backup encrypted before the rotation needs it set back as `BACKUP_ENCRYPTION_KEY` for that restore.
+:::
+
 ### Timezone Configuration
 
 Set `APP_DISPLAY_TIMEZONE` to display dates, backup filenames, and schedule times in your local timezone. A cron like `0 2 * * *` will then fire at 02:00 in that zone.
@@ -128,14 +161,66 @@ with proxy configuration.
 Checks the [Troubleshooting section](#troubleshooting) for help with proxy configuration.
 :::
 
+## Analytics
+
+Databasement sends no analytics. To track visits with your own tool, set `ANALYTICS_SNIPPET` to the HTML its
+setup page gives you: it is added as-is to the `<head>` of every page, and nothing is added when it is unset.
+
+| Variable            | Description                                | Default |
+| ------------------- | ------------------------------------------ | ------- |
+| `ANALYTICS_SNIPPET` | HTML added to the `<head>` of every page   | -       |
+
+```bash
+# Umami
+ANALYTICS_SNIPPET='<script defer src="https://umami.example.com/script.js" data-website-id="your-website-id"></script>'
+
+# Plausible
+ANALYTICS_SNIPPET='<script defer data-domain="databasement.example.com" src="https://plausible.io/js/script.js"></script>'
+```
+
+:::warning
+The snippet is trusted HTML and runs on every page, including for logged-in users. Only paste code from a
+provider you trust.
+:::
+
+## Private CA / Self-Signed Certificates
+
+Connections to OAuth providers, and from a [remote agent](../../user-guide/agents.md) to the Databasement server,
+verify TLS certificates against the system CAs. When your identity provider or server uses a certificate signed by a
+private CA, point `TLS_CA_BUNDLE` to that CA in PEM format, mounted into the container (on the agents too).
+
+| Variable        | Description                                          | Default     |
+| --------------- | ---------------------------------------------------- | ----------- |
+| `TLS_CA_BUNDLE` | PEM file of the CAs to trust instead of the system's | system CAs  |
+| `TLS_VERIFY`    | Set to `false` to skip certificate verification      | `true`      |
+
+```bash
+TLS_CA_BUNDLE=/certs/ca.pem
+```
+
+The bundle replaces the system CAs for these connections rather than adding to them, so it must hold every CA they
+need: append your CA to the system bundle if you also sign in with Google, GitHub or gitlab.com.
+
+`TLS_VERIFY=false` accepts any certificate, including one presented by an attacker on the network path. Prefer
+`TLS_CA_BUNDLE`, and keep `TLS_VERIFY=false` for testing.
+
 ## Logging
 
-| Variable      | Description       | Default  |
-| ------------- | ----------------- | -------- |
-| `LOG_CHANNEL` | Logging channel   | `stderr` |
-| `LOG_LEVEL`   | Minimum log level | `debug`  |
+| Variable               | Description                                | Default                             |
+| ---------------------- | ------------------------------------------ | ----------------------------------- |
+| `LOG_CHANNEL`          | Logging channel                            | `stdio`                             |
+| `LOG_LEVEL`            | Minimum log level                          | `debug`                             |
+| `LOG_STDERR_FORMATTER` | Monolog formatter for `stdio` and `stderr` | plain text (JSON in the Helm chart) |
 
-For production, `stderr` is recommended as logs will be captured by Docker.
+`stdio` sends warnings and errors to stderr and the rest to stdout, so journald, Cockpit and Kubernetes show errors as
+errors. `stderr` sends everything to stderr. `single` and `daily` write to `storage/logs/` instead of the container output.
+
+For one JSON object per entry (stack traces included), set the following. The Helm chart does this by default
+(`logging.formatter`; set it to `""` for plain text).
+
+```bash
+LOG_STDERR_FORMATTER=Monolog\Formatter\JsonFormatter
+```
 
 ## Complete Example
 
@@ -157,7 +242,7 @@ DB_USERNAME=databasement
 DB_PASSWORD=secure-password-here
 
 # Logging
-LOG_CHANNEL=stderr
+LOG_CHANNEL=stdio
 LOG_LEVEL=warning
 ```
 

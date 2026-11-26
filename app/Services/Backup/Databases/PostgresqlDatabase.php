@@ -5,14 +5,17 @@ namespace App\Services\Backup\Databases;
 use App\Contracts\BackupLogger;
 use App\Enums\DatabaseType;
 use App\Exceptions\Backup\ConnectionException;
+use App\Services\Backup\Databases\Concerns\TestsConnection;
 use App\Services\Backup\DTO\DatabaseOperationLog;
 use App\Services\Backup\DTO\DatabaseOperationResult;
-use App\Support\Formatters;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Support\Facades\Process;
 
 class PostgresqlDatabase implements DatabaseInterface
 {
+    use TestsConnection;
+
     /**
      * Database opened when the server names none of its own. Conventional on a
      * self-hosted cluster; managed providers often withhold CONNECT on it.
@@ -45,15 +48,15 @@ class PostgresqlDatabase implements DatabaseInterface
      * Restore-side flags applied by pg_restore when reading a custom-format archive.
      * Only used by the custom-format branch of restore() — plain format uses psql -f
      * which accepts none of these. --clean/--if-exists must be passed at restore time
-     * (not dump time) for custom archives. --jobs=4 enables parallel restore, which is
-     * the main reason custom format exists.
+     * (not dump time) for custom archives. --jobs only on request (parallel_restore):
+     * extension tables such as pgAgent's have their foreign keys before their data
+     * loads, so a parallel restore of them fails where a serial one follows dump order.
      */
     private const array RESTORE_CUSTOM_FORMAT_OPTIONS = [
         '--clean',
         '--if-exists',
         '--no-owner',
         '--no-privileges',
-        '--jobs=4',
     ];
 
     /**
@@ -104,12 +107,17 @@ class PostgresqlDatabase implements DatabaseInterface
             $extraFlags = ' '.DatabaseOperationResult::escapeFlags($this->config['dump_flags'], DatabaseType::POSTGRESQL);
         }
 
+        // An unqualified pattern matches the table in every schema, and the quotes stop pg_dump
+        // lowercasing it. The -and-children form (pg_dump 16+) also drops a partitioned table's partitions.
+        foreach ($this->config['excluded_tables'] ?? [] as $table) {
+            $extraFlags .= ' '.escapeshellarg("--exclude-table-and-children=\"{$table}\"");
+        }
+
         $major = $this->serverMajorVersion();
         $binary = $this->binary('pg_dump', $major);
 
-        // Flags must come before the database name (last positional argument)
         $command = sprintf(
-            '%sPGPASSWORD=%s %s %s --host=%s --port=%s --username=%s%s %s',
+            '%sPGPASSWORD=%s %s %s --host=%s --port=%s --username=%s%s --dbname=%s',
             $this->sslEnvPrefix(),
             escapeshellarg($this->config['pass']),
             $binary,
@@ -118,31 +126,34 @@ class PostgresqlDatabase implements DatabaseInterface
             escapeshellarg((string) $this->config['port']),
             escapeshellarg($this->config['user']),
             $extraFlags,
-            escapeshellarg($this->config['database']),
+            DatabaseOperationResult::escapeDatabaseName($this->config['database']),
         );
 
-        $command .= ' -f '.escapeshellarg($outputPath);
-
-        return new DatabaseOperationResult(command: $command, log: $this->legacyClientLog($binary, $major));
+        return new DatabaseOperationResult(command: $command, log: $this->legacyClientLog($binary, $major), writesToStdout: true);
     }
 
     public function restore(string $inputPath): DatabaseOperationResult
     {
         $major = $this->serverMajorVersion();
+        $role = $this->config['restore_role'] ?? null;
 
         if (($this->config['dump_format'] ?? 'plain') === 'custom') {
             $binary = $this->binary('pg_restore', $major);
 
             return new DatabaseOperationResult(command: sprintf(
-                '%sPGPASSWORD=%s %s %s --host=%s --port=%s --username=%s --dbname=%s %s',
+                '%sPGPASSWORD=%s %s %s --host=%s --port=%s --username=%s%s --dbname=%s %s',
                 $this->sslEnvPrefix(),
                 escapeshellarg($this->config['pass']),
                 $binary,
-                implode(' ', $this->withPrivilegeOptions(self::RESTORE_CUSTOM_FORMAT_OPTIONS)),
+                implode(' ', [
+                    ...$this->withPrivilegeOptions(self::RESTORE_CUSTOM_FORMAT_OPTIONS),
+                    ...(empty($this->config['parallel_restore']) ? [] : ['--jobs=4']),
+                ]),
                 escapeshellarg($this->config['host']),
                 escapeshellarg((string) $this->config['port']),
                 escapeshellarg($this->config['user']),
-                escapeshellarg($this->config['database']),
+                $role !== null ? ' --role='.escapeshellarg($role) : '',
+                DatabaseOperationResult::escapeDatabaseName($this->config['database']),
                 escapeshellarg($inputPath),
             ), log: $this->legacyClientLog($binary, $major));
         }
@@ -151,16 +162,18 @@ class PostgresqlDatabase implements DatabaseInterface
         // failed statement. Without it psql skips past errors and still exits 0,
         // so a restore that recreated nothing was reported as successful. The
         // dump is written with --clean --if-exists, so the DROP statements it
-        // replays are not an error when the object is absent.
+        // replays are not an error when the object is absent. psql runs -c and
+        // -f in order in one session, so a SET ROLE covers the whole dump.
         return new DatabaseOperationResult(command: sprintf(
-            '%sPGPASSWORD=%s %s --set=ON_ERROR_STOP=1 --host=%s --port=%s --username=%s %s -f %s',
+            '%sPGPASSWORD=%s %s --set=ON_ERROR_STOP=1 --host=%s --port=%s --username=%s --dbname=%s%s -f %s',
             $this->sslEnvPrefix(),
             escapeshellarg($this->config['pass']),
             $this->binary('psql', $major),
             escapeshellarg($this->config['host']),
             escapeshellarg((string) $this->config['port']),
             escapeshellarg($this->config['user']),
-            escapeshellarg($this->config['database']),
+            DatabaseOperationResult::escapeDatabaseName($this->config['database']),
+            $role !== null ? ' -c '.escapeshellarg('SET ROLE '.self::quoteIdentifier($role)) : '',
             escapeshellarg($inputPath)
         ));
     }
@@ -320,72 +333,90 @@ class PostgresqlDatabase implements DatabaseInterface
     }
 
     /**
-     * The statements that hand a restored database, and what the restore made
-     * inside it, to $owner. Also what the restore modals preview, so what the
-     * user is shown and what runs cannot drift apart.
+     * The statements that hand a database about to be restored, and what the
+     * restore creates inside it, to $owner. Also what the restore modals
+     * preview, so what the user is shown and what runs cannot drift apart.
      *
      * `database` always runs: pg_dump only ever describes the contents of a
-     * database, never the database itself, so after a restore it belongs to the
-     * role the restore connected as even when the dump preserved ownership.
-     * That is the one thing preserving privileges cannot cover, and the only
-     * thing left to do for such a snapshot — its objects come back under their
-     * original owners, so the restore role owns nothing to hand over, and
-     * REASSIGN OWNED BY is far too blunt to point at them anyway: it moves
-     * every object the role owns in the database plus shared objects
-     * cluster-wide. `objects` therefore only joins it for a portable dump, the
-     * one case where the restore role recreated what it is handing over.
+     * database, never the database itself. It runs before the restore so the
+     * owner may create in the `public` schema, which from PostgreSQL 15 on
+     * belongs to pg_database_owner.
      *
-     * @param  string  $connectionUser  username the restore connects as
-     * @return array{database: string, objects?: string}
+     * `role` only joins it for a portable dump: the restore then runs as the
+     * owner, so everything it creates belongs to the owner from the start. A
+     * privilege-preserving snapshot sets its objects' owners itself, which
+     * only a role allowed to act for every one of them can replay. Reassigning
+     * afterwards is not an option: REASSIGN OWNED BY moves shared objects
+     * cluster-wide, and PostgreSQL refuses it outright for the bootstrap
+     * superuser, the role most servers are connected as.
+     *
+     * @return array{database: string, role?: string}
      */
-    public static function ownershipStatements(string $schemaName, string $owner, string $connectionUser, bool $preservesPrivileges): array
+    public static function ownershipStatements(string $schemaName, string $owner, bool $preservesPrivileges): array
     {
-        $quote = static fn (string $identifier): string => '"'.str_replace('"', '""', $identifier).'"';
-
         $statements = [
-            'database' => sprintf('ALTER DATABASE %s OWNER TO %s', $quote($schemaName), $quote($owner)),
+            'database' => sprintf('ALTER DATABASE %s OWNER TO %s', self::quoteIdentifier($schemaName), self::quoteIdentifier($owner)),
         ];
 
         if (! $preservesPrivileges) {
-            $statements['objects'] = sprintf('REASSIGN OWNED BY %s TO %s', $quote($connectionUser), $quote($owner));
+            $statements['role'] = sprintf('SET ROLE %s', self::quoteIdentifier($owner));
         }
 
         return $statements;
     }
 
     /**
-     * Hand the restored database to $username by running the statements
-     * {@see ownershipStatements()} settles on.
-     *
-     * The two run on different connections: the database is altered over the
-     * connection database, its objects reassigned from inside the restored one.
+     * Hand the database to $username ahead of {@see restore()}, and for a
+     * portable dump make that restore run as $username.
      */
     public function transferOwnership(string $schemaName, string $username, BackupLogger $logger): void
     {
-        $statements = self::ownershipStatements(
-            $schemaName,
-            $username,
-            (string) $this->config['user'],
-            ! empty($this->config['dump_privileges']),
-        );
+        $statements = self::ownershipStatements($schemaName, $username, ! empty($this->config['dump_privileges']));
 
         try {
-            $adminPdo = $this->createPdo();
             $logger->logCommand($statements['database'], null, 0);
-            $adminPdo->exec($statements['database']);
-
-            if (! isset($statements['objects'])) {
-                $logger->log('Snapshot carries its own ownership information, leaving the owners of the restored objects untouched');
-
-                return;
-            }
-
-            $targetPdo = $this->createPdoForDatabase($schemaName);
-            $logger->logCommand($statements['objects'], null, 0);
-            $targetPdo->exec($statements['objects']);
+            $this->createPdo()->exec($statements['database']);
         } catch (\PDOException $e) {
-            throw new ConnectionException("Failed to transfer ownership: {$e->getMessage()}", 0, $e);
+            throw new ConnectionException(
+                "Failed to transfer ownership: {$e->getMessage()}".$this->roleMembershipHint($e, $username),
+                0,
+                $e,
+            );
         }
+
+        if (! isset($statements['role'])) {
+            $logger->log('Snapshot carries its own ownership information, leaving the owners of the restored objects untouched');
+
+            return;
+        }
+
+        $this->config['restore_role'] = $username;
+    }
+
+    /**
+     * A connection user short of superuser, as on RDS, Azure or Cloud SQL, may
+     * only hand a database to a role it can SET ROLE to. PostgreSQL 16+ words
+     * the refusal "must be able to SET ROLE", older servers "must be member of
+     * role"; creating the role is not enough from 16 on, as CREATEROLE only
+     * grants ADMIN on it.
+     */
+    private function roleMembershipHint(\PDOException $e, string $owner): string
+    {
+        if (! str_contains($e->getMessage(), 'must be able to SET ROLE')
+            && ! str_contains($e->getMessage(), 'must be member of role')) {
+            return '';
+        }
+
+        return sprintf(
+            '. Grant the owner role to the user Databasement connects as: GRANT %s TO %s;',
+            self::quoteIdentifier($owner),
+            self::quoteIdentifier((string) $this->config['user']),
+        );
+    }
+
+    private static function quoteIdentifier(string $identifier): string
+    {
+        return '"'.str_replace('"', '""', $identifier).'"';
     }
 
     public function listDatabases(bool $includeSystemDatabases = false): array
@@ -411,55 +442,23 @@ class PostgresqlDatabase implements DatabaseInterface
 
     public function testConnection(): array
     {
-        $versionCommand = $this->getQueryCommand('SELECT version();');
-        $startTime = microtime(true);
+        return $this->probeConnection($this->getQueryCommand('SELECT version();'), function (ProcessResult $result, int $durationMs): array {
+            $version = trim($result->output());
 
-        try {
-            $result = Process::timeout(10)->run($versionCommand);
-        } catch (ProcessTimedOutException) {
-            $durationMs = (int) round((microtime(true) - $startTime) * 1000);
+            // Get SSL status (non-critical, ignore failures)
+            $sslCommand = $this->getQueryCommand(
+                "SELECT CASE WHEN ssl THEN 'yes' ELSE 'no' END FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
+            );
 
-            return [
-                'success' => false,
-                'message' => 'Connection timed out after '.Formatters::humanDuration($durationMs).'. Please check the host and port are correct and accessible.',
-                'details' => [],
-            ];
-        }
+            try {
+                $sslResult = Process::timeout(10)->run($sslCommand);
+                $ssl = $sslResult->successful() ? trim($sslResult->output()) : 'unknown';
+            } catch (ProcessTimedOutException) {
+                $ssl = 'unknown';
+            }
 
-        $durationMs = (int) round((microtime(true) - $startTime) * 1000);
-
-        if ($result->failed()) {
-            $errorOutput = trim($result->errorOutput() ?: $result->output());
-
-            return [
-                'success' => false,
-                'message' => $errorOutput ?: 'Connection failed with exit code '.$result->exitCode(),
-                'details' => [],
-            ];
-        }
-
-        $version = trim($result->output());
-
-        // Get SSL status (non-critical, ignore failures)
-        $sslCommand = $this->getQueryCommand(
-            "SELECT CASE WHEN ssl THEN 'yes' ELSE 'no' END FROM pg_stat_ssl WHERE pid = pg_backend_pid();"
-        );
-
-        try {
-            $sslResult = Process::timeout(10)->run($sslCommand);
-            $ssl = $sslResult->successful() ? trim($sslResult->output()) : 'unknown';
-        } catch (ProcessTimedOutException) {
-            $ssl = 'unknown';
-        }
-
-        return [
-            'success' => true,
-            'message' => 'Connection successful',
-            'details' => [
-                'ping_ms' => $durationMs,
-                'output' => json_encode(['dbms' => $version, 'ssl' => $ssl], JSON_PRETTY_PRINT),
-            ],
-        ];
+            return $this->connectionSucceededWithInfo($durationMs, ['dbms' => $version, 'ssl' => $ssl]);
+        });
     }
 
     /**
@@ -517,13 +516,13 @@ class PostgresqlDatabase implements DatabaseInterface
     private function getQueryCommand(string $query): string
     {
         return sprintf(
-            '%sPGPASSWORD=%s psql --host=%s --port=%s --user=%s %s -t -c %s',
+            '%sPGPASSWORD=%s psql --host=%s --port=%s --user=%s --dbname=%s -t -c %s',
             $this->sslEnvPrefix(),
             escapeshellarg($this->config['pass']),
             escapeshellarg($this->config['host']),
             escapeshellarg((string) $this->config['port']),
             escapeshellarg($this->config['user']),
-            escapeshellarg($this->config['database']),
+            DatabaseOperationResult::escapeDatabaseName($this->config['database']),
             escapeshellarg($query)
         );
     }

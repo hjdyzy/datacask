@@ -15,14 +15,45 @@
         @include('livewire.snapshot._filters', ['variant' => 'mobile'])
     </div>
 
+    @php $canBulkDelete = auth()->user()->can('deleteAny', \App\Models\Snapshot::class); @endphp
+
     <x-card shadow>
+        @if($canBulkDelete && count($selected) > 0)
+            @php
+                $total = $snapshots->total();
+                $pageIds = $snapshots->pluck('id')->all();
+                $pageFullySelected = $pageIds !== [] && array_diff($pageIds, $selected) === [];
+            @endphp
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-4 px-4 py-2 rounded-lg bg-base-200 text-sm">
+                @if($selectAllMatching)
+                    <span>{{ trans_choice('All :count matching snapshot is selected.|All :count matching snapshots are selected.', $total, ['count' => $total]) }}</span>
+                @else
+                    <span>{{ trans_choice(':count snapshot selected.|:count snapshots selected.', count($selected), ['count' => count($selected)]) }}</span>
+                    @if($pageFullySelected && $total > count($pageIds))
+                        <x-button
+                            :label="trans_choice('Select all :count matching snapshot|Select all :count matching snapshots', $total, ['count' => $total])"
+                            wire:click="$set('selectAllMatching', true)"
+                            spinner="selectAllMatching"
+                            class="btn-link btn-xs px-0"
+                        />
+                    @endif
+                @endif
+                <x-button :label="__('Clear selection')" wire:click="clearSelection" spinner class="btn-ghost btn-xs" />
+                <x-button :label="__('Delete')" icon="o-trash" wire:click="confirmBulkDelete" spinner class="btn-error btn-xs ml-auto" />
+            </div>
+        @endif
+
         <x-table
             :headers="$headers"
             :rows="$snapshots"
             :sort-by="$sortBy"
             with-pagination
+            :selectable="$canBulkDelete"
+            wire:model.live="selected"
+            x-init="$watch('selection', () => isSelectable && handleCheckAll())"
             :row-decoration="[
                 'group' => fn () => true,
+                'opacity-60' => fn ($snapshot) => $snapshot->deleting,
                 'bg-error/5' => fn ($snapshot) => $snapshot->job?->status?->value === 'failed',
                 'bg-warning/5' => fn ($snapshot) => $snapshot->job?->status?->value === 'running'
                     || $snapshot->hasMissingFile(),
@@ -31,7 +62,7 @@
             <x-slot:empty>
                 <div class="flex flex-col items-center justify-center py-12 text-center">
                     <x-icon name="o-archive-box" class="w-10 h-10 text-base-content/30 mb-3" />
-                    @if($search || $statusFilter !== '' || $serverFilter !== '' || $dbTypeFilter !== '' || $fileMissing !== '')
+                    @if($this->hasFilters)
                         <p class="font-medium">{{ __('No snapshots match your filters') }}</p>
                         <p class="text-sm text-base-content/60 mt-1">{{ __('Try clearing some filters to see more results.') }}</p>
                     @else
@@ -42,7 +73,7 @@
             </x-slot:empty>
 
             @scope('cell_subject', $snapshot)
-                @php $fileMissing = $snapshot->hasMissingFile(); @endphp
+                @php $hasMissingFile = $snapshot->hasMissingFile(); @endphp
                 <div class="flex items-center gap-3 min-w-0">
                     <x-icon :name="$snapshot->database_type->icon()" class="w-6 h-6 shrink-0" />
                     <div class="min-w-0">
@@ -63,7 +94,7 @@
                                     <x-snapshot-volume-badge :file="$file" />
                                 @endif
                             @endforeach
-                            @if($fileMissing)
+                            @if($hasMissingFile)
                                 <x-popover>
                                     <x-slot:trigger>
                                         <span class="badge badge-warning badge-xs gap-1 cursor-help">
@@ -77,7 +108,7 @@
                                             @php $lastVerifiedAt = $snapshot->lastVerifiedAt(); @endphp
                                             @if($lastVerifiedAt)
                                                 <div class="text-base-content/70">
-                                                    {{ __('Checked') }}: {{ \App\Support\Formatters::humanDate($lastVerifiedAt) }}
+                                                    {{ __('Last checked') }}: {{ \App\Support\Formatters::humanDate($lastVerifiedAt) }}
                                                     ({{ $lastVerifiedAt->diffForHumans() }})
                                                 </div>
                                             @endif
@@ -85,7 +116,9 @@
                                     </x-slot:content>
                                 </x-popover>
                             @endif
-                            @include('livewire.snapshot._lock', ['snapshot' => $snapshot])
+                            @unless($snapshot->deleting)
+                                @include('livewire.snapshot._lock', ['snapshot' => $snapshot])
+                            @endunless
                         </div>
                         @include('livewire.snapshot._comment', ['snapshot' => $snapshot])
                     </div>
@@ -97,39 +130,26 @@
                 <div class="text-sm text-base-content/60">{{ \App\Support\Formatters::humanDate($snapshot->created_at) }}</div>
             @endscope
 
-            @scope('cell_status', $snapshot)
-                @php $status = $snapshot->job?->status?->value ?? 'pending'; $job = $snapshot->job; @endphp
-                <x-job-status-indicator :status="$status" />
+            @scope('cell_file_size', $snapshot)
+                <span class="font-mono text-sm">{{ $snapshot->file_size ? $snapshot->getHumanFileSize() : '-' }}</span>
+            @endscope
 
-                @if($status === 'running' && $job?->started_at)
-                    <div class="text-xs text-warning font-mono mt-1">{{ $job->started_at->diffForHumans(null, true) }}</div>
-                @elseif($job?->getHumanDuration() || ($status === 'completed' && $snapshot->getHumanFileSize()))
-                    <div class="flex items-center gap-3 text-xs text-base-content/60 mt-1">
-                        @if($job?->getHumanDuration())
-                            <span class="inline-flex items-center gap-1">
-                                <x-icon name="o-clock" class="w-3 h-3" />
-                                <span class="font-mono">{{ $job->getHumanDuration() }}</span>
-                            </span>
-                        @endif
-                        @if($status === 'completed' && $snapshot->getHumanFileSize())
-                            <span class="inline-flex items-center gap-1">
-                                <x-icon name="o-archive-box" class="w-3 h-3" />
-                                <span class="font-mono">{{ $snapshot->getHumanFileSize() }}</span>
-                            </span>
-                        @endif
-                    </div>
-                @endif
+            @scope('cell_duration_ms', $snapshot)
+                <span class="font-mono text-sm">{{ $snapshot->job?->getHumanDuration() ?? '-' }}</span>
+            @endscope
+
+            @scope('cell_status', $snapshot)
+                <x-job-status-cell :job="$snapshot->job" :status="$snapshot->deleting ? 'deleting' : null" />
             @endscope
 
             @scope('actions', $snapshot)
                 @php
-                    $status = $snapshot->job?->status?->value;
+                    $status = $snapshot->deleting ? 'deleting' : $snapshot->job?->status?->value;
                     $job = $snapshot->job;
                     $canRestore = $status === 'completed' && $snapshot->hasExistingFile() && $snapshot->database_type !== \App\Enums\DatabaseType::REDIS;
                     $completedFiles = $snapshot->files->where('status', \App\Enums\SnapshotFileStatus::Completed);
                     $canDownload = $status === 'completed' && $completedFiles->where('file_exists', true)->isNotEmpty();
-                    $canDelete = in_array($status, ['completed', 'failed'], true);
-                    $canCancel = $status === 'pending' && $job;
+                    $canDelete = in_array($status, ['completed', 'failed', 'cancelled'], true);
                 @endphp
                 <div class="flex items-center gap-1 justify-end">
                     @if($status === 'failed')
@@ -175,15 +195,7 @@
                         @endcan
                     @endif
 
-                    <x-button
-                        icon="o-document-text"
-                        wire:click="viewLogs('{{ $job?->id }}')"
-                        spinner
-                        :tooltip="__('View Logs')"
-                        class="btn-ghost btn-sm"
-                        :class="$job ? '' : 'opacity-30'"
-                        :disabled="! $job"
-                    />
+                    @include('partials.view-logs-button', ['job' => $job])
 
                     @if($canDelete)
                         @can('delete', $snapshot)
@@ -206,17 +218,7 @@
                         @endif
                     @endif
 
-                    @if($canCancel)
-                        @can('delete', $job)
-                            <x-button
-                                icon="o-x-mark"
-                                wire:click="confirmCancelJob('{{ $job->id }}')"
-                                spinner
-                                :tooltip="__('Cancel')"
-                                class="btn-ghost btn-sm text-error"
-                            />
-                        @endcan
-                    @endif
+                    @include('partials.cancel-job-button', ['job' => $job])
                 </div>
             @endscope
         </x-table>
@@ -275,20 +277,20 @@
         </x-slot:actions>
     </x-modal>
 
-    @if($cancelJobId)
-        <x-delete-confirmation-modal
-            :title="__('Cancel Job')"
-            :message="__('Are you sure you want to cancel this pending job?')"
-            onConfirm="deletePendingJob"
-        />
-    @else
-        <x-delete-confirmation-modal
-            :title="__('Delete Snapshot')"
-            :message="__('Are you sure you want to delete this snapshot? The backup file will be permanently removed.')"
-            onConfirm="deleteSnapshot"
-            :showKeepFiles="true"
-        />
-    @endif
+    <x-delete-confirmation-modal
+        :title="$deleteSnapshotId ? __('Delete Snapshot') : __('Delete Snapshots')"
+        :message="$deleteSnapshotId
+            ? __('Are you sure you want to delete this snapshot? The backup file will be permanently removed.')
+            : trans_choice('Are you sure you want to delete :count snapshot? Its backup files will be permanently removed.|Are you sure you want to delete :count snapshots? Their backup files will be permanently removed.', $bulkDeleteCount, ['count' => $bulkDeleteCount])"
+        :onConfirm="$deleteSnapshotId ? 'deleteSnapshot' : 'bulkDeleteSnapshots'"
+        :showKeepFiles="true"
+    >
+        @if(! $deleteSnapshotId && $bulkSkipCount > 0)
+            <x-alert icon="o-information-circle" class="alert-info mt-4">
+                {{ trans_choice(':count locked or in-progress snapshot will be skipped.|:count locked or in-progress snapshots will be skipped.', $bulkSkipCount, ['count' => $bulkSkipCount]) }}
+            </x-alert>
+        @endif
+    </x-delete-confirmation-modal>
 
     <livewire:restore.modal />
 </div>

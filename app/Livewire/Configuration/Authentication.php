@@ -57,6 +57,14 @@ class Authentication extends Component
                 'value' => config('oauth.auto_create_users') ? 'true' : 'false',
                 'description' => __('Automatically create users on first OAuth login.'),
             ],
+            ...collect(['google' => 'GOOGLE', 'github' => 'GITHUB', 'gitlab' => 'GITLAB'])
+                ->map(fn (string $env, string $provider) => [
+                    'env' => "OAUTH_{$env}_AUTO_CREATE_USERS",
+                    'value' => (config("oauth.providers.{$provider}.auto_create_users") ?? config('oauth.auto_create_users')) ? 'true' : 'false',
+                    'description' => __('Automatically create users on first OAuth login.'),
+                ])
+                ->values()
+                ->all(),
             [
                 'env' => 'OAUTH_DEFAULT_ROLE',
                 'value' => config('oauth.default_role') ?: '-',
@@ -71,6 +79,11 @@ class Authentication extends Component
                 'env' => 'OAUTH_AUTO_LINK_BY_EMAIL',
                 'value' => config('oauth.auto_link_by_email') ? 'true' : 'false',
                 'description' => __('Link OAuth logins to existing users with matching email.'),
+            ],
+            [
+                'env' => 'OAUTH_OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM',
+                'value' => config('oauth.providers.oidc.trust_email_without_verified_claim') ? 'true' : 'false',
+                'description' => __('Link OIDC logins by email even when the provider sends no email_verified claim.'),
             ],
         ];
     }

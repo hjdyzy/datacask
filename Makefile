@@ -1,9 +1,9 @@
 .PHONY: help install start update-translation check-translation test test-sequential test-mysql test-postgres test-filter test-filter-mysql test-filter-postgres test-coverage test-coverage-filter test-tia test-tia-baseline backup-test lint-check lint-fix lint migrate migrate-fresh migrate-fresh-seed db-seed setup clean import-db docs docs-build release
 
 # Colors for output
-GREEN  := \033[0;32m
-YELLOW := \033[0;33m
-NC     := \033[0m # No Color
+GREEN  := $(shell printf '\033[0;32m')
+YELLOW := $(shell printf '\033[0;33m')
+NC     := $(shell printf '\033[0m')
 
 # Docker / PHP helpers
 #
@@ -30,11 +30,8 @@ PHP_COMPOSER   := $(PHP_EXEC) composer
 PHP_ARTISAN    := $(PHP_EXEC) php artisan
 
 # Localization: target locales for `make update-translation`, and the gitignored
-# file holding the Anthropic key. `op run` would raise a 1Password authorization
-# prompt on every invocation, and the translator makes one process call per locale,
-# so the key is read out once and kept in .env.local. Regenerate it with:
-#   { printf 'ANTHROPIC_API_KEY='; op read 'op://Personal/<item>/credential'; } > .env.local
-# It lives in the main checkout, which is also where a worktree's Compose project runs.
+# file holding the Anthropic key, a single `ANTHROPIC_API_KEY=...` line. It lives
+# in the main checkout, which is also where a worktree's Compose project runs.
 LOCALES   ?= fr es el zh_TW zh_CN
 ENV_LOCAL ?= $(if $(COMPOSE_ROOT),$(COMPOSE_ROOT),.)/.env.local
 
@@ -53,10 +50,13 @@ help: ## Display this help message
 
 install: ## Install dependencies (composer + npm)
 	$(PHP_COMPOSER) install
-	$(NPM_EXEC) install
+	$(PHP_ARTISAN) boost:update --no-discover --no-interaction
+	$(NPM_EXEC) ci
 
-setup: start install build migrate
-	$(DOCKER_COMPOSE) restart app worker
+setup: start install
+	$(DOCKER_COMPOSE) restart app
+	$(MAKE) build migrate db-seed
+	$(DOCKER_COMPOSE) restart worker
 
 start: ## Start development server (all services: php, queue, mysql, postgres)
 	$(DOCKER_COMPOSE) up -d
@@ -211,6 +211,12 @@ release: ## Create a new release (usage: make release VERSION=1.0.1)
 		echo "$(YELLOW)Usage: make release VERSION=1.0.1$(NC)"; \
 		exit 1; \
 	fi
+	@for skill in changelog release-issues; do \
+		if [ ! -f .claude/skills/$$skill/SKILL.md ]; then \
+			echo "$(YELLOW)Error: the /$$skill skill is not installed in .claude/skills. Run 'make install' (or php artisan boost:update) first.$(NC)"; \
+			exit 1; \
+		fi; \
+	done
 	@if [ "$$(git branch --show-current)" != "main" ]; then \
 		echo "$(YELLOW)Error: You must be on the main branch to create a release.$(NC)"; \
 		exit 1; \
@@ -224,10 +230,16 @@ release: ## Create a new release (usage: make release VERSION=1.0.1)
 		echo "$(YELLOW)Error: Working directory is not clean. Commit or stash changes first.$(NC)"; \
 		exit 1; \
 	fi
+	@version=$(VERSION); breaking=$$(git log HEAD --not --tags --no-merges --format='%h %s' | grep -E '^[0-9a-f]+ [a-z]+\(agent\)!:'); \
+	if [ -n "$$breaking" ] && [ "$${version##*.}" != "0" ]; then \
+		echo "$(YELLOW)Error: these commits break agents, so $(VERSION) must open a new minor (x.y.0), not a patch:$(NC)"; \
+		echo "$$breaking"; \
+		exit 1; \
+	fi
 	@if ! grep -q '^- `$(VERSION)`' CHANGELOG.md; then \
 		echo "$(GREEN)No $(VERSION) entries in CHANGELOG.md, writing them with Claude Code (/changelog $(VERSION))...$(NC)"; \
 		claude -p "/changelog $(VERSION)" \
-			--allowedTools "Bash(git *),Bash(gh *),Read,Edit,Write" || exit 1; \
+			--allowedTools "Bash(git *),Bash(gh *),Bash(date *),Read,Edit,Write" || exit 1; \
 	fi
 	@if ! grep -q '^- `$(VERSION)`' CHANGELOG.md; then \
 		echo "$(YELLOW)Error: CHANGELOG.md still has no $(VERSION) entries. Run /changelog $(VERSION) in Claude Code and check its output.$(NC)"; \
@@ -246,3 +258,7 @@ release: ## Create a new release (usage: make release VERSION=1.0.1)
 	git tag v$(VERSION)
 	git push origin v$(VERSION)
 	@echo "$(GREEN)Release v$(VERSION) created! Workflows will build Docker images, Helm chart, and GitHub Release.$(NC)"
+	@echo "$(GREEN)Commenting on the issues v$(VERSION) resolves (/release-issues $(VERSION))...$(NC)"
+	@claude -p "/release-issues $(VERSION)" \
+		--allowedTools "Bash(git *),Bash(gh *),Read" \
+		|| echo "$(YELLOW)Warning: the issue comments failed. The release is out; rerun /release-issues $(VERSION) in Claude Code.$(NC)"
